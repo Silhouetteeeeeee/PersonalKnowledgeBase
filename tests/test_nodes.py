@@ -51,3 +51,36 @@ def test_classify_and_answer():
     assert "answer" in result
     assert 0 <= result["confidence"] <= 1
     assert isinstance(result["needs_search"], bool)
+
+
+def test_search_web_node():
+    from agent.nodes.search_web import search_web_node
+
+    result = search_web_node({"user_message": "Python"})
+    assert "search_results" in result
+    assert isinstance(result["search_results"], list)
+
+
+def test_regenerate_empty_search():
+    from agent.nodes.regenerate import regenerate
+
+    result = regenerate({
+        "user_message": "test",
+        "answer": "original answer",
+        "search_results": [],
+    })
+    assert result["answer"] == "original answer"
+
+
+def test_regenerate_with_search():
+    from agent.nodes.regenerate import regenerate
+
+    result = regenerate({
+        "user_message": "What is Python?",
+        "answer": "I don't know",
+        "search_results": [
+            "Python is a high-level programming language created by Guido van Rossum.",
+        ],
+    })
+    assert isinstance(result["answer"], str)
+    assert len(result["answer"]) > 0
