@@ -21,13 +21,26 @@ def save_knowledge_point(
 
 def search_knowledge_points(query: str, limit: int = 5) -> list[dict]:
     conn = get_connection()
-    like = f"%{query}%"
-    cur = conn.execute(
+    words = query.strip().split()
+    if not words:
+        conn.close()
+        return []
+
+    conditions = []
+    params = []
+    for word in words:
+        like = f"%{word}%"
+        conditions.append("(knowledge_text LIKE ? OR source_question LIKE ?)")
+        params.extend([like, like])
+
+    sql = (
         """SELECT * FROM knowledge_points
-           WHERE knowledge_text LIKE ? OR source_question LIKE ?
-           ORDER BY created_at DESC LIMIT ?""",
-        (like, like, limit),
-    )
+           WHERE {}
+           ORDER BY created_at DESC LIMIT ?"""
+    ).format(" OR ".join(conditions))
+    params.append(limit)
+
+    cur = conn.execute(sql, params)
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return rows
