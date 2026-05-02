@@ -1,10 +1,10 @@
 """
-Personal Knowledge Base Agent — WeChat Work Bot.
-Run this to start the Flask webhook server.
+Personal Knowledge Base Agent — WeChat Work Smart Bot.
+Run this to start the long-connection bot.
 """
 
 import logging
-from server.webhook import run_server
+from server.bot import run_bot
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,5 +14,5 @@ logging.basicConfig(
 if __name__ == "__main__":
     from storage.database import init_db
     init_db()
-    print("Knowledge Agent started. Listening for WeChat Work messages...")
-    run_server()
+    print("Knowledge Agent started (WebSocket long-connection mode)...")
+    run_bot()
