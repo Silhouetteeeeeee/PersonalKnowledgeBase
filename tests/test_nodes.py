@@ -38,3 +38,16 @@ def test_retrieve_with_results():
     result = retrieve({"user_message": "Tell me about Python"})
     assert len(result["stored_knowledge"]) == 1
     assert "Python" in result["stored_knowledge"][0]["knowledge_text"]
+
+
+def test_classify_and_answer():
+    from agent.nodes.classify_and_answer import classify_and_answer
+
+    result = classify_and_answer({
+        "user_message": "What is Redis?",
+        "stored_knowledge": [],
+    })
+    assert "category" in result
+    assert "answer" in result
+    assert 0 <= result["confidence"] <= 1
+    assert isinstance(result["needs_search"], bool)
