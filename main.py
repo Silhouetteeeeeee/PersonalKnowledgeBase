@@ -1,27 +1,18 @@
-import os
+"""
+Personal Knowledge Base Agent — WeChat Work Bot.
+Run this to start the Flask webhook server.
+"""
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_deepseek import ChatDeepSeek
+import logging
+from server.webhook import run_server
 
-apikey = os.getenv("DEEPSEEK_API_KEY")
-
-model = ChatDeepSeek(
-    model="deepseek-v4-flash",
-    temperature=0,
-    max_tokens=10000,
-    timeout=None,
-    max_retries=2
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "you are a helpful agent. You should be kind and friendly to the user."),
-    ("human", "{question}")
-])
-
-chain = prompt | model | StrOutputParser()
-response = chain.invoke({
-    "question": "你好，请你告诉我Redis相关知识"
-})
-
-print(response)
+if __name__ == "__main__":
+    from storage.database import init_db
+    init_db()
+    print("Knowledge Agent started. Listening for WeChat Work messages...")
+    run_server()
