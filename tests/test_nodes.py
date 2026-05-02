@@ -84,3 +84,21 @@ def test_regenerate_with_search():
     })
     assert isinstance(result["answer"], str)
     assert len(result["answer"]) > 0
+
+
+def test_store_empty_answer():
+    from agent.nodes.store import store
+
+    result = store({"user_message": "hi", "answer": ""})
+    assert result == {}
+
+
+def test_store_distills_knowledge():
+    from agent.nodes.store import store
+
+    result = store({
+        "user_message": "What is Redis persistence?",
+        "answer": "Redis supports RDB snapshots and AOF logs for persistence.",
+    })
+    assert "category" in result
+    assert isinstance(result["category"], str)
