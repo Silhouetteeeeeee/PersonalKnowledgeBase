@@ -14,8 +14,6 @@ from agent.graph import build_graph
 logger = logging.getLogger(__name__)
 graph = build_graph()
 
-_ws_instance = None
-
 
 def _on_open(ws):
     logger.info("Connected to WeChat Work WebSocket")
@@ -34,32 +32,39 @@ def _on_message(ws, raw):
         return
     try:
         data = json.loads(raw)
-        cmd = data.get("cmd")
 
-        if cmd == "aibot_subscribe_ack":
-            code = data.get("body", {}).get("code", -1)
-            if code == 0:
+        # Subscribe acknowledgment: {"errcode":0,"errmsg":"ok","headers":{...}}
+        if "errcode" in data:
+            if data["errcode"] == 0:
                 logger.info("Subscription confirmed")
             else:
-                logger.error("Subscription failed: %s", data.get("body"))
-        elif cmd == "aibot_msg_callback":
+                logger.error("Subscription failed: errcode=%s errmsg=%s",
+                             data["errcode"], data.get("errmsg"))
+
+        # Incoming message
+        elif data.get("cmd") == "aibot_msg_callback":
             _handle_msg(ws, data.get("body", {}))
+
         else:
-            logger.debug("Unhandled command: %s", cmd)
+            logger.debug("Unhandled message: %s", raw[:150])
     except json.JSONDecodeError:
         logger.warning("Invalid message received: %s", raw[:100])
 
 
 def _handle_msg(ws, body):
-    content = body.get("content", "").strip()
-    user_id = body.get("userid", "unknown")
-    seq = body.get("seq", "")
-    msg_type = body.get("content_type", 1)
+    user_id = body.get("from", {}).get("userid", "unknown")
+    msgtype = body.get("msgtype", "")
+    seq = body.get("msgid", "")
+    chattype = body.get("chattype", "single")
 
-    if not content or msg_type != 1:
+    if msgtype != "text":
         return
 
-    logger.info("Received from %s: %s", user_id, content[:60])
+    content = body.get("text", {}).get("content", "").strip()
+    if not content:
+        return
+
+    logger.info("Received %s from %s: %s", chattype, user_id, content[:60])
 
     try:
         result = graph.invoke({
