@@ -31,8 +31,8 @@ def test_save_and_search():
     assert len(results) == 1
     assert "Redis RDB" in results[0]["knowledge_text"]
 
-    all_results = search_knowledge_points("python")
-    assert len(results) >= 0  # no crash on no match
+    python_results = search_knowledge_points("python")
+    assert isinstance(python_results, list)
 
 
 def test_save_returns_id():

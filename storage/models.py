@@ -19,6 +19,27 @@ def save_knowledge_point(
     return cur.lastrowid
 
 
+def save_knowledge_points_bulk(knowledge_points: list[dict]) -> list[int]:
+    """Save multiple knowledge points in a single transaction."""
+    conn = get_connection()
+    ids = []
+    try:
+        for kp in knowledge_points:
+            cur = conn.execute(
+                """INSERT INTO knowledge_points (knowledge_text, source_question, category, tags)
+                   VALUES (?, ?, ?, ?)""",
+                (kp["knowledge_text"], kp["source_question"], kp["category"], json.dumps(kp["tags"])),
+            )
+            ids.append(cur.lastrowid)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return ids
+
+
 def search_knowledge_points(query: str, limit: int = 5) -> list[dict]:
     conn = get_connection()
     words = query.strip().split()

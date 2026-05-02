@@ -48,7 +48,7 @@ def handle_message():
 
     except Exception as e:
         logger.exception("Error processing message")
-        return jsonify({"code": 500, "msg": str(e)}), 500
+        return jsonify({"code": 500, "msg": "internal error"}), 500
 
 
 @app.route("/health", methods=["GET"])

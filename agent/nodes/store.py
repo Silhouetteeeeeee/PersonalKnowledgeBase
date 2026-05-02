@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 from langchain_deepseek import ChatDeepSeek
-from storage.models import save_knowledge_point, ensure_category
+from server.config import LLM_MODEL, LLM_TEMPERATURE
+from agent.utils import with_retry
+from storage.models import save_knowledge_points_bulk, ensure_category
 
 
 class DistilledPoint(BaseModel):
@@ -17,7 +19,7 @@ class DistillOutput(BaseModel):
     )
 
 
-model = ChatDeepSeek(model="deepseek-chat", temperature=0)
+model = ChatDeepSeek(model=LLM_MODEL, temperature=LLM_TEMPERATURE)
 structured_model = model.with_structured_output(DistillOutput)
 
 
@@ -25,20 +27,23 @@ def store(state: dict) -> dict:
     if not state.get("answer"):
         return {}
 
-    result = structured_model.invoke(
+    result = with_retry(lambda: structured_model.invoke(
         f"Distill the following Q&A into concise, standalone knowledge points.\n\n"
         f"Question: {state['user_message']}\n"
         f"Answer: {state['answer']}"
-    )
+    ))
 
     ensure_category(result.category)
 
-    for kp in result.knowledge_points:
-        save_knowledge_point(
-            knowledge_text=kp.knowledge_text,
-            source_question=state["user_message"],
-            category=result.category,
-            tags=kp.tags,
-        )
+    knowledge_points = [
+        {
+            "knowledge_text": kp.knowledge_text,
+            "source_question": state["user_message"],
+            "category": result.category,
+            "tags": kp.tags,
+        }
+        for kp in result.knowledge_points
+    ]
+    save_knowledge_points_bulk(knowledge_points)
 
     return {"category": result.category}
