@@ -28,6 +28,7 @@ def test_graph_short_circuit():
         "user_id": "test_user",
         "timestamp": "2026-05-02T12:00:00",
     })
+    print(result)
     assert result["final_response"]
     assert len(result["final_response"]) > 0
     assert "category" in result

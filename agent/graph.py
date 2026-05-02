@@ -16,6 +16,15 @@ def needs_search_router(state: dict) -> str:
 
 
 def build_graph() -> StateGraph:
+    """
+        入口: parse - 解析用户输入
+        顺序执行: parse → retrieve → classify_and_answer
+        条件分支: 在 classify_and_answer 后根据 needs_search 判断：
+        如果需要搜索 → search_web → regenerate → store
+        如果不需要搜索 → 直接到 store
+        最终输出: store → respond → 结束
+        :return: StateGraph 状态图
+    """
     builder = StateGraph(AgentState)
 
     builder.add_node("parse", parse)

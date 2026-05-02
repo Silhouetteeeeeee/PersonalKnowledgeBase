@@ -14,3 +14,4 @@ def with_retry(fn, max_retries=2, delay=1):
                 raise
             logger.warning("LLM call failed (attempt %d/%d): %s", attempt + 1, max_retries, e)
             time.sleep(delay)
+    return None
