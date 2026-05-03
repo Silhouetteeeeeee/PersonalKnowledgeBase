@@ -25,11 +25,11 @@ def needs_search_router(state: dict) -> str:
 def build_graph() -> StateGraph:
     """
         入口: parse - 解析用户输入
-        顺序执行: parse → retrieve → classify_and_answer → fact_check
-        条件分支: fact_check 后根据 needs_search 判断：
-        如果需要搜索 → search_web → regenerate → store
-        如果不需要搜索 → 直接到 store
-        最终输出: store → respond → 结束
+        顺序执行: parse → retrieve → classify_and_answer
+        条件分支: classify_and_answer 后根据 needs_search 判断：
+        如果需要搜索 → search_web → regenerate
+        如果不需要搜索 → 直接到 fact_check
+        汇聚: 两条路径都到 fact_check → store → respond
         :return: StateGraph 状态图
     """
     builder = StateGraph(AgentState)
@@ -46,18 +46,24 @@ def build_graph() -> StateGraph:
     builder.set_entry_point("parse")
     builder.add_edge("parse", "retrieve")
     builder.add_edge("retrieve", "classify_and_answer")
-    builder.add_edge("classify_and_answer", "fact_check")
+
+    # 条件路由：是否需要搜索
     builder.add_conditional_edges(
-        "fact_check",
+        "classify_and_answer",
         needs_search_router,
-        {"search_web": "search_web", "store": "store"},
+        {"search_web": "search_web", "store": "fact_check"},
     )
+
+    # 搜索路径
     builder.add_edge("search_web", "regenerate")
-    builder.add_edge("regenerate", "store")
+    builder.add_edge("regenerate", "fact_check")
+
+    # 公共下游
+    builder.add_edge("fact_check", "store")
     builder.add_edge("store", "respond")
 
     compiled = builder.compile()
 
-    logger.info("Graph built with 8 nodes: parse → retrieve → classify_and_answer → fact_check → [search_web|store] → respond")
+    logger.info("Graph built: parse → retrieve → classify_and_answer → [search_web→regenerate|direct] → fact_check → store → respond")
 
     return compiled

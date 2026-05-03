@@ -147,8 +147,6 @@ def _process_and_store_file(file_bytes: bytes, filename: str, user_id: str) -> s
     from agent.utils.llm import LLM
     from agent.nodes.store import DistillOutput
 
-    import json
-
     file_hash = compute_file_hash(file_bytes)
     ext = os.path.splitext(filename)[1].lower() or ".bin"
 

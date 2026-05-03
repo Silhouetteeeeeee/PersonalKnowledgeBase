@@ -110,7 +110,7 @@ def test_fact_check_no_answer():
     from agent.nodes.fact_check import fact_check
 
     result = fact_check({"answer": ""})
-    assert result == {}
+    assert result == {"contradiction_found": False, "contradiction_details": ""}
 
 
 def test_fact_check_skips_when_no_related_knowledge():
@@ -122,6 +122,25 @@ def test_fact_check_skips_when_no_related_knowledge():
     })
     # No stored knowledge → no contradiction
     assert result.get("contradiction_found") is False
+
+
+def test_respond_normal():
+    from agent.nodes.respond import respond
+
+    result = respond({"answer": "Hello world"})
+    assert result["final_response"] == "Hello world"
+
+
+def test_respond_contradiction_warning():
+    from agent.nodes.respond import respond
+
+    result = respond({
+        "answer": "Python is a scripting language",
+        "contradiction_found": True,
+        "contradiction_details": "Python is a compiled language, not scripting",
+    })
+    assert "[矛盾警告]" in result["final_response"]
+    assert "Python is a compiled language" in result["final_response"]
 
 
 def test_store_skips_on_contradiction():

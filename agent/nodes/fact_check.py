@@ -24,14 +24,14 @@ def fact_check(state: dict) -> dict:
     answer = state.get("answer", "")
     if not answer:
         logger.info("Skipping fact check: no answer")
-        return {}
+        return {"contradiction_found": False, "contradiction_details": ""}
 
     # 用 answer 做语义搜索，查找相关的已有知识
     try:
         related = search_knowledge_points_semantic(answer, limit=5)
     except Exception as e:
         logger.warning("Semantic search for fact check failed: %s", e)
-        return {}
+        return {"contradiction_found": False, "contradiction_details": ""}
 
     if not related:
         logger.info("Fact check: no related knowledge found, skipping")

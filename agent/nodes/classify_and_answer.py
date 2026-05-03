@@ -31,7 +31,7 @@ def classify_and_answer(state: dict) -> dict:
         for k in state["stored_knowledge"]:
             context += f"- {k['knowledge_text']}\n"
 
-    prompt = f"{context}Question: {state['user_message']}"
+    prompt = f"{context} Question: {state['user_message']}"
     logger.info("Classifying question (stored_knowledge=%d)", len(state.get("stored_knowledge", [])))
 
     result = LLM.generate_structured(prompt, ClassifyOutput)
