@@ -1,9 +1,8 @@
 import logging
 
 from pydantic import BaseModel, Field
-from langchain_deepseek import ChatDeepSeek
-from server.config import LLM_MODEL, LLM_TEMPERATURE
-from agent.utils import with_retry
+
+from agent.utils.llm import LLM
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +24,6 @@ class ClassifyOutput(BaseModel):
     )
 
 
-model = ChatDeepSeek(model=LLM_MODEL, temperature=LLM_TEMPERATURE)
-structured_model = model.with_structured_output(ClassifyOutput)
-
-
 def classify_and_answer(state: dict) -> dict:
     context = ""
     if state.get("stored_knowledge"):
@@ -39,7 +34,7 @@ def classify_and_answer(state: dict) -> dict:
     prompt = f"{context}Question: {state['user_message']}"
     logger.info("Classifying question (stored_knowledge=%d)", len(state.get("stored_knowledge", [])))
 
-    result = with_retry(lambda: structured_model.invoke(prompt))
+    result = LLM.generate_structured(prompt, ClassifyOutput)
 
     logger.info("Classified as category='%s' confidence=%.2f needs_search=%s needs_store=%s",
                 result.category, result.confidence, result.needs_search, result.needs_store)

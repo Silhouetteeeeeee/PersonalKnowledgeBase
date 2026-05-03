@@ -1,11 +1,10 @@
 import logging
 
 from pydantic import BaseModel, Field
-from langchain_deepseek import ChatDeepSeek
-from server.config import LLM_MODEL, LLM_TEMPERATURE
-from agent.utils import with_retry
+
+from agent.utils.llm import LLM
 from storage.models import (
-    save_knowledge_points_bulk,
+    save_knowledge_points_bulk_with_embeddings,
     ensure_category,
     find_similar_knowledge,
 )
@@ -27,12 +26,7 @@ class DistillOutput(BaseModel):
     )
 
 
-model = ChatDeepSeek(model=LLM_MODEL, temperature=LLM_TEMPERATURE)
-structured_model = model.with_structured_output(DistillOutput)
-
-
 def store(state: dict) -> dict:
-    # Skip storage if LLM decided this doesn't need storing
     if not state.get("needs_store", True):
         logger.info("Skipping store: needs_store=False")
         return {}
@@ -42,20 +36,28 @@ def store(state: dict) -> dict:
         return {}
 
     logger.info("Distilling knowledge from Q&A...")
-    result = with_retry(lambda: structured_model.invoke(
+    result = LLM.generate_structured(
         f"Distill the following Q&A into concise, standalone knowledge points.\n\n"
         f"Question: {state['user_message']}\n"
-        f"Answer: {state['answer']}"
-    ))
+        f"Answer: {state['answer']}",
+        DistillOutput,
+        use_language=False,
+    )
 
     ensure_category(result.category)
 
-    # Dedup: check each knowledge point against existing ones
+    # Dedup: skip knowledge points that are semantically similar to existing ones
     new_points = []
     for kp in result.knowledge_points:
-        similar = find_similar_knowledge(kp.knowledge_text)
+        try:
+            similar = find_similar_knowledge(kp.knowledge_text, threshold=0.25)
+        except Exception as e:
+            logger.warning("Dedup embedding failed for '%s': %s, saving without dedup",
+                           kp.knowledge_text[:30], e)
+            similar = []
         if similar:
-            logger.info("Skipping duplicate knowledge: '%s' (found %d similar)", kp.knowledge_text[:50], len(similar))
+            logger.info("Skipping duplicate knowledge: '%s' (distance=%.3f)",
+                         kp.knowledge_text[:50], similar[0].get("distance", 0))
             continue
         new_points.append(kp)
 
@@ -72,6 +74,6 @@ def store(state: dict) -> dict:
         }
         for kp in new_points
     ]
-    save_knowledge_points_bulk(knowledge_points)
+    save_knowledge_points_bulk_with_embeddings(knowledge_points)
 
     return {"category": result.category}

@@ -54,3 +54,52 @@ def test_ensure_category():
     conn.close()
     assert row["name"] == "databases/redis"
     assert row["description"] == "Redis related knowledge"
+
+
+def test_bulk_save_with_embeddings():
+    from storage.models import save_knowledge_points_bulk_with_embeddings, find_similar_knowledge
+
+    points = [
+        {
+            "knowledge_text": "Redis RDB creates point-in-time snapshots of data",
+            "source_question": "What is Redis persistence?",
+            "category": "databases/redis",
+            "tags": ["redis", "persistence"],
+        },
+    ]
+    ids = save_knowledge_points_bulk_with_embeddings(points)
+    assert len(ids) == 1
+
+    # Verify embedding was stored by searching semantically
+    similar = find_similar_knowledge("Redis RDB snapshots", threshold=0.5)
+    assert len(similar) == 1
+    assert similar[0]["id"] == ids[0]
+
+
+def test_find_similar_knowledge_semantic():
+    from storage.models import save_knowledge_points_bulk_with_embeddings, find_similar_knowledge
+
+    points = [
+        {
+            "knowledge_text": "Python is a high-level programming language",
+            "source_question": "What is Python?",
+            "category": "programming/python",
+            "tags": ["python"],
+        },
+        {
+            "knowledge_text": "Redis is an in-memory data store",
+            "source_question": "What is Redis?",
+            "category": "databases/redis",
+            "tags": ["redis"],
+        },
+    ]
+    save_knowledge_points_bulk_with_embeddings(points)
+
+    # Similar text should find a match within threshold
+    similar = find_similar_knowledge("Python is a programming language", threshold=0.3)
+    assert len(similar) == 1
+    assert "Python" in similar[0]["knowledge_text"]
+
+    # Unrelated text should not find matches with strict threshold
+    unrelated = find_similar_knowledge("The weather is nice today", threshold=0.3)
+    assert len(unrelated) == 0

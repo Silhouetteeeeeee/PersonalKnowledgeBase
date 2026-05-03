@@ -10,3 +10,5 @@ WECOM_BOT_SECRET = os.getenv("WECOM_BOT_SECRET", "")
 # LLM configuration
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
+
+OUTPUT_LANGUAGE = os.getenv("OUTPUT_LANGUAGE", "English")
