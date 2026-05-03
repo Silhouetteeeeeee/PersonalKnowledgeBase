@@ -1,4 +1,4 @@
-"""文件处理模块：从各类文件中提取文字内容。支持 PDF、DOCX、TXT/MD、图片（PaddleOCR）。"""
+"""文件处理模块：从各类文件中提取文字内容。支持 PDF、DOCX、TXT/MD、XMind、图片（PaddleOCR）。"""
 
 import hashlib
 import logging
@@ -29,6 +29,8 @@ def extract_text_from_file(file_path: str) -> str:
         return _extract_text_from_pdf(file_path)
     elif ext == ".docx":
         return _extract_text_from_docx(file_path)
+    elif ext == ".xmind":
+        return _extract_text_from_xmind(file_path)
     elif ext in (".txt", ".md", ".json", ".yaml", ".yml", ".csv", ".xml", ".html"):
         return _extract_text_from_txt(file_path)
     elif ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp"):
@@ -64,6 +66,44 @@ def _extract_text_from_docx(file_path: str) -> str:
         return "\n".join(text_parts)
     except Exception as e:
         logger.error("DOCX extraction failed for %s: %s", file_path, e)
+        raise
+
+
+def _extract_text_from_xmind(file_path: str) -> str:
+    """使用 xmind SDK 提取 XMind 思维导图文字。"""
+    import xmind
+    try:
+        wb = xmind.load(file_path)
+        lines = []
+
+        for sheet in wb.getSheets():
+            root = sheet.getRootTopic()
+            if root is None:
+                continue
+
+            lines.append(f"# {sheet.getTitle() or '思维导图'}")
+
+            def walk(topic, depth=0):
+                if topic is None:
+                    return
+                title = topic.getTitle()
+                if title:
+                    indent = "  " * depth
+                    lines.append(f"{indent}- {title}")
+
+                # 提取备注（getNotes 返回字符串）
+                notes = topic.getNotes()
+                if notes and isinstance(notes, str) and notes.strip():
+                    lines.append(f"{'  ' * (depth + 1)}[备注] {notes.strip()}")
+
+                for sub in topic.getSubTopics():
+                    walk(sub, depth + 1)
+
+            walk(root, depth=0)
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error("XMind extraction failed for %s: %s", file_path, e)
         raise
 
 

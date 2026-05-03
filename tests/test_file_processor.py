@@ -52,6 +52,36 @@ def test_extract_text_unsupported_type(tmp_path):
     assert text == ""
 
 
+def test_extract_text_from_xmind(tmp_path):
+    import xmind
+    from storage.file_processor import extract_text_from_file
+
+    # 创建测试用的 .xmind 文件
+    xmind_path = tmp_path / "test.xmind"
+    wb = xmind.load(str(xmind_path))
+    sheet = wb.getPrimarySheet()
+    sheet.setTitle("测试导图")
+    root = sheet.getRootTopic()
+    root.setTitle("根节点")
+    t1 = root.addSubTopic()
+    t1.setTitle("子节点A")
+    t1.setPlainNotes("备注内容")
+    t2 = root.addSubTopic()
+    t2.setTitle("子节点B")
+    t2_1 = t2.addSubTopic()
+    t2_1.setTitle("孙节点")
+    xmind.save(wb, str(xmind_path))
+
+    text = extract_text_from_file(str(xmind_path))
+
+    assert "测试导图" in text
+    assert "根节点" in text
+    assert "子节点A" in text
+    assert "子节点B" in text
+    assert "孙节点" in text
+    assert "备注内容" in text
+
+
 def test_compute_file_hash():
     from storage.file_processor import compute_file_hash
 
