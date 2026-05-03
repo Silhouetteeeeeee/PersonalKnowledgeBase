@@ -1,6 +1,13 @@
+import logging
+
 from agent.tools.web_search import search_web
+
+logger = logging.getLogger(__name__)
 
 
 def search_web_node(state: dict) -> dict:
-    results = search_web(state["user_message"])
+    query = state["user_message"]
+    logger.info("Searching web for: '%s'", query[:60])
+    results = search_web(query)
+    logger.info("Web search returned %d results", len(results))
     return {"search_results": results}

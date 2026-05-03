@@ -1,5 +1,18 @@
 import json
+import logging
+
+import jieba
+
 from .database import get_connection
+
+logger = logging.getLogger(__name__)
+
+
+def _tokenize(text: str) -> list[str]:
+    """Tokenize text: jieba for Chinese, whitespace split for others."""
+    words = jieba.lcut(text)
+    # Filter out single-character noise, keep meaningful words
+    return [w.strip() for w in words if len(w.strip()) >= 2]
 
 
 def save_knowledge_point(
@@ -32,6 +45,7 @@ def save_knowledge_points_bulk(knowledge_points: list[dict]) -> list[int]:
             )
             ids.append(cur.lastrowid)
         conn.commit()
+        logger.info("Saved %d knowledge points in category '%s'", len(knowledge_points), knowledge_points[0]["category"])
     except Exception:
         conn.rollback()
         raise
@@ -42,14 +56,30 @@ def save_knowledge_points_bulk(knowledge_points: list[dict]) -> list[int]:
 
 def search_knowledge_points(query: str, limit: int = 5) -> list[dict]:
     conn = get_connection()
+
+    # Extract keywords from both methods
     words = query.strip().split()
-    if not words:
+    chinese_words = _tokenize(query)
+
+    # Combine both: for short ASCII words use split, for Chinese use jieba
+    all_keywords = set()
+    for w in words:
+        if any(ord(c) > 127 for c in w):
+            # Chinese/unicode word from split — already in chinese_words
+            if len(w) >= 2:
+                all_keywords.add(w)
+        else:
+            # English/ASCII word
+            all_keywords.add(w)
+    all_keywords.update(chinese_words)
+
+    if not all_keywords:
         conn.close()
         return []
 
     conditions = []
     params = []
-    for word in words:
+    for word in sorted(all_keywords, key=len, reverse=True):
         like = f"%{word}%"
         conditions.append("(knowledge_text LIKE ? OR source_question LIKE ?)")
         params.extend([like, like])
@@ -61,6 +91,30 @@ def search_knowledge_points(query: str, limit: int = 5) -> list[dict]:
     ).format(" OR ".join(conditions))
     params.append(limit)
 
+    cur = conn.execute(sql, params)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    logger.info("Retrieved %d knowledge points for query '%s' (keywords: %s)", len(rows), query[:30], list(all_keywords)[:8])
+    return rows
+
+
+def find_similar_knowledge(knowledge_text: str, threshold: float = 0.7) -> list[dict]:
+    """Find similar knowledge points by keyword overlap."""
+    words = _tokenize(knowledge_text)
+    if not words:
+        return []
+
+    conn = get_connection()
+    conditions = []
+    params = []
+    for w in words:
+        conditions.append("knowledge_text LIKE ?")
+        params.append(f"%{w}%")
+
+    sql = "SELECT * FROM knowledge_points WHERE {} ORDER BY created_at DESC LIMIT 3".format(
+        " OR ".join(conditions)
+    )
     cur = conn.execute(sql, params)
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()

@@ -1,3 +1,5 @@
+import logging
+
 from langgraph.graph import StateGraph
 from agent.state import AgentState
 from agent.nodes.parse import parse
@@ -8,10 +10,14 @@ from agent.nodes.regenerate import regenerate
 from agent.nodes.store import store
 from agent.nodes.respond import respond
 
+logger = logging.getLogger(__name__)
+
 
 def needs_search_router(state: dict) -> str:
     if state.get("needs_search"):
+        logger.info("Router: needs_search=True → search_web branch")
         return "search_web"
+    logger.info("Router: needs_search=False → store branch")
     return "store"
 
 
@@ -47,4 +53,8 @@ def build_graph() -> StateGraph:
     builder.add_edge("regenerate", "store")
     builder.add_edge("store", "respond")
 
-    return builder.compile()
+    compiled = builder.compile()
+
+    logger.info("Graph built with 7 nodes: parse → retrieve → classify_and_answer → [search_web|store] → respond")
+
+    return compiled

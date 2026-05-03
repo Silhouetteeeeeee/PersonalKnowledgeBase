@@ -8,6 +8,7 @@ class AgentState(TypedDict):
     category: str
     confidence: float
     needs_search: bool
+    needs_store: bool
     search_results: list[str]
     stored_knowledge: list[dict]
     answer: str

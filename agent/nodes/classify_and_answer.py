@@ -1,7 +1,11 @@
+import logging
+
 from pydantic import BaseModel, Field
 from langchain_deepseek import ChatDeepSeek
 from server.config import LLM_MODEL, LLM_TEMPERATURE
 from agent.utils import with_retry
+
+logger = logging.getLogger(__name__)
 
 
 class ClassifyOutput(BaseModel):
@@ -14,6 +18,10 @@ class ClassifyOutput(BaseModel):
     )
     needs_search: bool = Field(
         description="Whether web search is needed for accuracy"
+    )
+    needs_store: bool = Field(
+        description="Whether this Q&A should be stored as knowledge. "
+                    "True for factual/educational Q&A, False for casual chat/greetings"
     )
 
 
@@ -29,11 +37,18 @@ def classify_and_answer(state: dict) -> dict:
             context += f"- {k['knowledge_text']}\n"
 
     prompt = f"{context}Question: {state['user_message']}"
+    logger.info("Classifying question (stored_knowledge=%d)", len(state.get("stored_knowledge", [])))
+
     result = with_retry(lambda: structured_model.invoke(prompt))
+
+    logger.info("Classified as category='%s' confidence=%.2f needs_search=%s needs_store=%s",
+                result.category, result.confidence, result.needs_search, result.needs_store)
+    logger.info("Answer: %s", result.answer[:80])
 
     return {
         "category": result.category,
         "answer": result.answer,
         "confidence": result.confidence,
         "needs_search": result.needs_search,
+        "needs_store": result.needs_store,
     }
