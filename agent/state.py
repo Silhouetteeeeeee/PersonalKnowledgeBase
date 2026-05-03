@@ -13,3 +13,5 @@ class AgentState(TypedDict):
     stored_knowledge: list[dict]
     answer: str
     final_response: str
+    contradiction_found: bool
+    contradiction_details: str

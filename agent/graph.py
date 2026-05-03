@@ -5,6 +5,7 @@ from agent.state import AgentState
 from agent.nodes.parse import parse
 from agent.nodes.retrieve import retrieve
 from agent.nodes.classify_and_answer import classify_and_answer
+from agent.nodes.fact_check import fact_check
 from agent.nodes.search_web import search_web_node
 from agent.nodes.regenerate import regenerate
 from agent.nodes.store import store
@@ -24,8 +25,8 @@ def needs_search_router(state: dict) -> str:
 def build_graph() -> StateGraph:
     """
         入口: parse - 解析用户输入
-        顺序执行: parse → retrieve → classify_and_answer
-        条件分支: 在 classify_and_answer 后根据 needs_search 判断：
+        顺序执行: parse → retrieve → classify_and_answer → fact_check
+        条件分支: fact_check 后根据 needs_search 判断：
         如果需要搜索 → search_web → regenerate → store
         如果不需要搜索 → 直接到 store
         最终输出: store → respond → 结束
@@ -36,6 +37,7 @@ def build_graph() -> StateGraph:
     builder.add_node("parse", parse)
     builder.add_node("retrieve", retrieve)
     builder.add_node("classify_and_answer", classify_and_answer)
+    builder.add_node("fact_check", fact_check)
     builder.add_node("search_web", search_web_node)
     builder.add_node("regenerate", regenerate)
     builder.add_node("store", store)
@@ -44,8 +46,9 @@ def build_graph() -> StateGraph:
     builder.set_entry_point("parse")
     builder.add_edge("parse", "retrieve")
     builder.add_edge("retrieve", "classify_and_answer")
+    builder.add_edge("classify_and_answer", "fact_check")
     builder.add_conditional_edges(
-        "classify_and_answer",
+        "fact_check",
         needs_search_router,
         {"search_web": "search_web", "store": "store"},
     )
@@ -55,6 +58,6 @@ def build_graph() -> StateGraph:
 
     compiled = builder.compile()
 
-    logger.info("Graph built with 7 nodes: parse → retrieve → classify_and_answer → [search_web|store] → respond")
+    logger.info("Graph built with 8 nodes: parse → retrieve → classify_and_answer → fact_check → [search_web|store] → respond")
 
     return compiled

@@ -35,6 +35,10 @@ def store(state: dict) -> dict:
         logger.info("Skipping store: no answer")
         return {}
 
+    if state.get("contradiction_found"):
+        logger.info("Skipping store: contradiction detected")
+        return {}
+
     logger.info("Distilling knowledge from Q&A...")
     result = LLM.generate_structured(
         f"Distill the following Q&A into concise, standalone knowledge points.\n\n"

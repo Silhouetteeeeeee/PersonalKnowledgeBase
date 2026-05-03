@@ -104,3 +104,41 @@ def test_store_distills_knowledge():
     })
     assert "category" in result
     assert isinstance(result["category"], str)
+
+
+def test_fact_check_no_answer():
+    from agent.nodes.fact_check import fact_check
+
+    result = fact_check({"answer": ""})
+    assert result == {}
+
+
+def test_fact_check_skips_when_no_related_knowledge():
+    from agent.nodes.fact_check import fact_check
+
+    result = fact_check({
+        "answer": "Python is a programming language",
+        "user_message": "What is Python?",
+    })
+    # No stored knowledge → no contradiction
+    assert result.get("contradiction_found") is False
+
+
+def test_store_skips_on_contradiction():
+    from agent.nodes.store import store
+
+    result = store({
+        "user_message": "test",
+        "answer": "some answer",
+        "contradiction_found": True,
+        "contradiction_details": "test contradiction",
+    })
+    assert result == {}
+
+
+def test_graph_includes_fact_check():
+    from agent.graph import build_graph
+
+    g = build_graph()
+    # 验证新节点存在
+    assert "fact_check" in g.nodes
