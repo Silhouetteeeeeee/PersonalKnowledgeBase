@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import threading
 import time
 from typing import Optional
@@ -301,6 +302,37 @@ def ensure_category(name: str, description: str = "") -> int:
         return cur.lastrowid
     finally:
         conn.close()
+
+
+def normalize_category_str(category: str, max_depth: int = 4) -> str:
+    """Lightweight format normalization for category strings.
+
+    - lowercase
+    - unify separators (\\ | ｜ · > → /)
+    - strip whitespace per level
+    - remove hyphens/underscores (re-ranker → reranker)
+    - truncate to max_depth levels
+    - idempotent: normalize(x) == normalize(normalize(x))
+    """
+    s = category.lower().strip()
+    s = re.sub(r'[\\｜|·>]', '/', s)
+    parts = [p.strip() for p in s.split('/') if p.strip()]
+    parts = [p.replace('-', '').replace('_', '') for p in parts]
+    return '/'.join(parts[:max_depth])
+
+
+def get_normalized_categories(max_count: int = 20) -> str:
+    """Return a formatted string of existing categories for prompt injection.
+
+    Returns e.g. "目前已存在的分类：databases/redis, ai/rag（共 2 个分类）"
+    Truncates to max_count entries with "...等 N 个分类" suffix.
+    """
+    cats = get_all_categories()
+    if not cats:
+        return ""
+    display = cats[:max_count]
+    suffix = f"（共 {len(cats)} 个分类）" if len(cats) <= max_count else f"…等 {len(cats)} 个分类"
+    return f"目前已存在的分类：{', '.join(display)}{suffix}"
 
 
 # ── File record helpers ──
