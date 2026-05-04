@@ -31,10 +31,9 @@ def search_web_from_baidu(query: str) -> list[str]:
                 }
             ],
             "stream": False,
-            "model": "ernie-4.5-turbo-32k",
-            "instruction": "##",
-            "enable_corner_markers": True,
-            "enable_deep_search": False
+            "instruction": "如果是技术问题，请你以专业的视角回答这个问题，如果你不了解，请回复你不了解，不要随便回复。"
+                           "如果是生活方面的问题，请你以合乎逻辑的方式回答问题。"
+                           "请以人类和机器都能理解的语言回答问题。",
         }
         response = requests.post(url, json=data, headers=headers)
         response.raise_for_status()
