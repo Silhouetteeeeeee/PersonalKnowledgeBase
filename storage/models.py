@@ -315,7 +315,7 @@ def normalize_category_str(category: str, max_depth: int = 4) -> str:
     - idempotent: normalize(x) == normalize(normalize(x))
     """
     s = category.lower().strip()
-    s = re.sub(r'[\\｜|·>→]', '/', s)
+    s = re.sub(r'[\\｜|·>→／]', '/', s)
     parts = [p.strip() for p in s.split('/') if p.strip()]
     parts = [p.replace('-', '').replace('_', '') for p in parts]
     return '/'.join(parts[:max_depth])
@@ -330,7 +330,7 @@ def get_normalized_categories(max_count: int = 20) -> str:
     cats = get_all_categories()
     if not cats:
         return ""
-    display = cats[:max_count]
+    display = [normalize_category_str(c) for c in cats[:max_count]]
     suffix = f"（共 {len(cats)} 个分类）" if len(cats) <= max_count else f"...等 {len(cats)} 个分类"
     return f"目前已存在的分类：{', '.join(display)}{suffix}"
 
