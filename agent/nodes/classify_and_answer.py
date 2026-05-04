@@ -2,6 +2,7 @@ import logging
 
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
+from langchain.agents import create_agent as create_react_agent
 
 from agent.utils.llm import LLM
 from agent.tools.web_search import search_web
@@ -26,8 +27,8 @@ class ClassifyOutput(BaseModel):
     )
 
 
-def _build_prompt(state: dict) -> str:
-    """Build the classification + answer prompt with optional context."""
+def _build_system_prompt(state: dict) -> str:
+    """Build the system prompt with classification rules and optional context."""
     context = ""
     if state.get("stored_knowledge"):
         context = "Relevant past knowledge:\n"
@@ -67,42 +68,7 @@ def _build_prompt(state: dict) -> str:
         f"- 临时性的、无长期价值的内容\n"
         f"- 重复的、已有的知识内容\n\n"
         f"{context}"
-        f"## 用户问题\n"
-        f"{state['user_message']}\n\n"
-        f"请按照上述要求进行分析，并以结构化格式输出结果。"
     )
-
-
-def _maybe_web_search(question: str) -> list[str]:
-    """Let the LLM decide whether to search the web, returns search results or empty list."""
-    @tool
-    def web_search_tool(query: str) -> str:
-        """Search the web for current information when the question involves recent events, facts, statistics, or topics where accuracy verification is needed. Do NOT use for common knowledge, basic concepts, or greetings."""
-        results = search_web(query)
-        return "\n".join(results) if results else "未找到相关结果。"
-
-    model = LLM.get_model()
-    model_with_tools = model.bind_tools([web_search_tool])
-
-    prompt = (
-        f"用户问题：{question}\n\n"
-        f"如果需要搜索网络来获取最新或更准确的信息，请使用 web_search_tool 工具。"
-        f"如果这是通用常识、基础概念或不需要验证时效性的问题，请直接回答不需要搜索。"
-    )
-
-    search_results = []
-    try:
-        response = model_with_tools.invoke(prompt)
-        if response.tool_calls:
-            for tc in response.tool_calls:
-                if tc["name"] == "web_search_tool":
-                    query = tc["args"].get("query", question)
-                    logger.info("LLM decided to search web for: '%s'", query[:60])
-                    search_results = search_web(query)
-    except Exception as e:
-        logger.warning("Web search tool call failed: %s", e)
-
-    return search_results
 
 
 def classify_and_answer(state: dict) -> dict:
@@ -111,39 +77,62 @@ def classify_and_answer(state: dict) -> dict:
         len(state.get("stored_knowledge", [])),
     )
 
-    # Phase 1: Let LLM decide if web search is needed
-    search_results = _maybe_web_search(state["user_message"])
+    @tool
+    def web_search_tool(query: str) -> str:
+        """Search the web for current information when the question involves recent events, facts, statistics, or topics where accuracy verification is needed. Do NOT use for common knowledge, basic concepts, or greetings."""
+        results = search_web(query)
+        return "\n".join(results) if results else "未找到相关结果。"
 
-    # Phase 2: Build prompt with or without search results
-    prompt = _build_prompt(state)
-    if search_results:
-        search_text = "\n".join(search_results)
-        prompt += (
-            f"\n\n## 网络搜索结果\n"
-            f"以下是搜索到的相关信息，请基于这些信息生成更准确的回答：\n{search_text}\n"
-            f"请结合搜索结果和你已有的知识给出综合性回答。"
-        )
+    agent = create_react_agent(
+        model=LLM.get_model(),
+        tools=[web_search_tool],
+        system_prompt=_build_system_prompt(state),
+        response_format=ClassifyOutput,
+    )
 
-    result = LLM.generate_structured(prompt, ClassifyOutput)
+    result = agent.invoke({
+        "messages": [("user", state["user_message"])],
+    })
+
+    structured = result.get("structured_response")
+    if structured is None:
+        logger.error("Agent did not produce structured response")
+        return {
+            "answer": "",
+            "category": "unknown",
+            "confidence": 0.0,
+            "needs_store": False,
+            "logic_chain": [{
+                "node": "classify_and_answer",
+                "action": "生成答案失败",
+                "reasoning": "Agent failed to produce structured output",
+            }],
+        }
+
+    # Determine if search was performed by checking for tool calls
+    search_performed = any(
+        hasattr(m, "tool_calls") and m.tool_calls
+        for m in result["messages"]
+    )
 
     logger.info(
         "Classified as category='%s' confidence=%.2f needs_store=%s",
-        result.category, result.confidence, result.needs_store,
+        structured.category, structured.confidence, structured.needs_store,
     )
-    logger.info("Answer: %s", result.answer[:80])
+    logger.info("Answer: %s", structured.answer[:80])
 
     return {
-        "category": result.category,
-        "answer": result.answer,
-        "confidence": result.confidence,
-        "needs_store": result.needs_store,
+        "category": structured.category,
+        "answer": structured.answer,
+        "confidence": structured.confidence,
+        "needs_store": structured.needs_store,
         "logic_chain": [{
             "node": "classify_and_answer",
-            "action": "搜索后生成答案" if search_results else "生成初始答案",
-            "reasoning": result.reasoning_trace,
-            "category": result.category,
-            "confidence": result.confidence,
-            "needs_store": result.needs_store,
-            "search_performed": bool(search_results),
+            "action": "搜索后生成答案" if search_performed else "生成初始答案",
+            "reasoning": structured.reasoning_trace,
+            "category": structured.category,
+            "confidence": structured.confidence,
+            "needs_store": structured.needs_store,
+            "search_performed": search_performed,
         }],
     }
