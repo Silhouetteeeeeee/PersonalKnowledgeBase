@@ -19,13 +19,6 @@ logger = logging.getLogger(__name__)
 MAX_CORRECTION_ATTEMPTS = 2
 
 
-def needs_search_router(state: dict) -> str:
-    if state.get("needs_search"):
-        logger.info("Router: needs_search=True → search_web branch")
-        return "search_web"
-    logger.info("Router: needs_search=False → fact_check branch")
-    return "fact_check"
-
 
 def fact_check_router(state: dict) -> str:
     if state.get("contradiction_found") and state.get("contradiction_details"):
@@ -71,9 +64,7 @@ def build_graph() -> StateGraph:
     """
         入口: parse - 解析用户输入
         顺序执行: parse → retrieve → classify_and_answer
-        条件分支: classify_and_answer 后根据 needs_search 判断：
-        如果需要搜索 → search_web → regenerate → fact_check
-        如果不需要搜索 → 直接到 fact_check
+        classify_and_answer 后直接到 fact_check（搜索在节点内部完成）
         fact_check 后如果发现矛盾 → reflect → 修正循环
         否则 → store → respond
         修正循环最多 2 次，之后到 respond
@@ -102,12 +93,8 @@ def build_graph() -> StateGraph:
     builder.add_edge("parse", "retrieve")
     builder.add_edge("retrieve", "classify_and_answer")
 
-    # classify_and_answer → [search_web→regenerate | direct] → fact_check
-    builder.add_conditional_edges(
-        "classify_and_answer",
-        needs_search_router,
-        {"search_web": "search_web", "fact_check": "fact_check"},
-    )
+    # classify_and_answer → fact_check (search is handled internally by the node)
+    builder.add_edge("classify_and_answer", "fact_check")
     builder.add_edge("search_web", "regenerate")
     builder.add_edge("regenerate", "fact_check")
 
@@ -146,7 +133,7 @@ def build_graph() -> StateGraph:
 
     logger.info(
         "Graph built: parse → retrieve → classify_and_answer → "
-        "[search_web→regenerate|direct] → fact_check → "
+        "fact_check → "
         "[reflect→correct_knowledge/record_error|store] → respond"
     )
 
