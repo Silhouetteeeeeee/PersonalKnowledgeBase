@@ -103,3 +103,58 @@ def test_find_similar_knowledge_semantic():
     # Unrelated text should not find matches with strict threshold
     unrelated = find_similar_knowledge("The weather is nice today", threshold=0.3)
     assert len(unrelated) == 0
+
+
+def test_normalize_category_str():
+    from storage.models import normalize_category_str
+
+    # lowercase
+    assert normalize_category_str("RAG/ReRank") == "rag/rerank"
+
+    # unify separators
+    assert normalize_category_str("databases \\ redis") == "databases/redis"
+    assert normalize_category_str("life | health") == "life/health"
+    assert normalize_category_str("programming·python") == "programming/python"
+    assert normalize_category_str("frameworks→pytorch") == "frameworks/pytorch"
+    assert normalize_category_str("AI／RAG") == "ai/rag"
+
+    # strip whitespace
+    assert normalize_category_str("  ai  /  rag  ") == "ai/rag"
+
+    # remove hyphens and underscores
+    assert normalize_category_str("re-ranker") == "reranker"
+    assert normalize_category_str("re_ranker") == "reranker"
+
+    # depth truncation
+    long = "a/b/c/d/e/f"
+    assert normalize_category_str(long, max_depth=4) == "a/b/c/d"
+    assert normalize_category_str(long, max_depth=2) == "a/b"
+
+    # idempotent
+    raw = "  RAG \\ ReRank-Re_ranking "
+    once = normalize_category_str(raw)
+    twice = normalize_category_str(once)
+    assert once == twice
+
+
+def test_get_normalized_categories_empty():
+    from storage.models import get_normalized_categories
+
+    result = get_normalized_categories()
+    assert result == ""
+
+
+def test_get_normalized_categories_with_data():
+    from storage.models import (
+        save_knowledge_point,
+        get_normalized_categories,
+    )
+
+    save_knowledge_point("text1", "q1", "databases/redis", ["redis"])
+    save_knowledge_point("text2", "q2", "ai/rag", ["rag"])
+
+    result = get_normalized_categories()
+    assert "databases/redis" in result
+    assert "ai/rag" in result
+    assert "目前已存在的分类" in result
+    assert "2 个分类" in result
