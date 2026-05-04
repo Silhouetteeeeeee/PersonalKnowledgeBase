@@ -71,9 +71,13 @@ def save_knowledge_points_bulk(knowledge_points: list[dict]) -> list[int]:
     try:
         for kp in knowledge_points:
             cur = conn.execute(
-                """INSERT INTO knowledge_points (knowledge_text, source_question, category, tags)
-                   VALUES (?, ?, ?, ?)""",
-                (kp["knowledge_text"], kp["source_question"], kp["category"], json.dumps(kp["tags"])),
+                """INSERT INTO knowledge_points (knowledge_text, source_question, category, tags, status, corrected_text, reasoning_log_path)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (kp["knowledge_text"], kp["source_question"], kp["category"],
+                 json.dumps(kp.get("tags", [])),
+                 kp.get("status", "active"),
+                 kp.get("corrected_text", ""),
+                 kp.get("reasoning_log_path", "")),
             )
             ids.append(cur.lastrowid)
         conn.commit()
@@ -94,9 +98,13 @@ def save_knowledge_points_bulk_with_embeddings(knowledge_points: list[dict]) -> 
     try:
         for kp in knowledge_points:
             cur = conn.execute(
-                """INSERT INTO knowledge_points (knowledge_text, source_question, category, tags)
-                   VALUES (?, ?, ?, ?)""",
-                (kp["knowledge_text"], kp["source_question"], kp["category"], json.dumps(kp["tags"])),
+                """INSERT INTO knowledge_points (knowledge_text, source_question, category, tags, status, corrected_text, reasoning_log_path)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (kp["knowledge_text"], kp["source_question"], kp["category"],
+                 json.dumps(kp.get("tags", [])),
+                 kp.get("status", "active"),
+                 kp.get("corrected_text", ""),
+                 kp.get("reasoning_log_path", "")),
             )
             kid = cur.lastrowid
             ids.append(kid)
@@ -294,5 +302,148 @@ def get_file_record_by_hash(file_hash: str) -> dict | None:
         )
         row = cur.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# ── Reflection helpers ──
+
+def save_error_record(
+    user_message: str,
+    wrong_answer: str,
+    correct_answer: str,
+    category: str,
+    contradiction_details: str,
+    error_type: str,
+) -> int:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """INSERT INTO error_records (user_message, wrong_answer, correct_answer, category, contradiction_details, error_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_message, wrong_answer, correct_answer, category, contradiction_details, error_type),
+        )
+        conn.commit()
+        logger.info("Saved error record: type=%s, category=%s", error_type, category)
+        return cur.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def save_error_record_with_embedding(record: dict) -> int:
+    """Save error record and store its embedding for semantic search."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """INSERT INTO error_records (user_message, wrong_answer, correct_answer, category, contradiction_details, error_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (record["user_message"], record["wrong_answer"], record["correct_answer"],
+             record.get("category", ""), record.get("contradiction_details", ""),
+             record.get("error_type", "unknown")),
+        )
+        eid = cur.lastrowid
+        # Store error record in knowledge_vectors with an offset rowid to avoid collision
+        embedding = generate_embedding(record["user_message"] + " " + record["wrong_answer"])
+        conn.execute(
+            "INSERT INTO error_vectors(rowid, embedding) VALUES (?, ?)",
+            (eid, serialize_float32(embedding)),
+        )
+        conn.commit()
+        logger.info("Saved error record with embedding (id=%d)", eid)
+        return eid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_knowledge_status(knowledge_id: int, status: str, corrected_text: str = "") -> None:
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE knowledge_points SET status = ?, corrected_text = ?, updated_at = datetime('now') WHERE id = ?",
+            (status, corrected_text, knowledge_id),
+        )
+        conn.commit()
+        logger.info("Updated knowledge point %d status to '%s'", knowledge_id, status)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_knowledge_status(knowledge_id: int) -> str:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT status FROM knowledge_points WHERE id = ?",
+            (knowledge_id,),
+        )
+        row = cur.fetchone()
+        return row["status"] if row else "active"
+    finally:
+        conn.close()
+
+
+def query_knowledge_reasoning_path(knowledge_id: int) -> str:
+    """Get the reasoning log file path for a knowledge point."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "SELECT reasoning_log_path FROM knowledge_points WHERE id = ?",
+            (knowledge_id,),
+        )
+        row = cur.fetchone()
+        return row["reasoning_log_path"] if row else ""
+    finally:
+        conn.close()
+
+
+def update_knowledge_reasoning_path(knowledge_ids: list[int], log_path: str) -> None:
+    """Update reasoning_log_path for multiple knowledge points after saving the MD file."""
+    conn = get_connection()
+    try:
+        for kid in knowledge_ids:
+            conn.execute(
+                "UPDATE knowledge_points SET reasoning_log_path = ? WHERE id = ?",
+                (log_path, kid),
+            )
+        conn.commit()
+        logger.info("Updated reasoning_log_path for %d knowledge points to '%s'",
+                     len(knowledge_ids), log_path)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def search_error_records_semantic(query: str, limit: int = 3) -> list[dict]:
+    """Search error records by semantic similarity to avoid repeating past mistakes."""
+    embedding = generate_embedding(query)
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT er.*, v.distance
+               FROM (
+                   SELECT rowid, distance
+                   FROM error_vectors
+                   WHERE embedding MATCH ?
+                     AND k = ?
+               ) v
+               JOIN error_records er ON er.id = v.rowid
+               ORDER BY v.distance""",
+            (serialize_float32(embedding), limit * 4),
+        ).fetchall()
+        results = [dict(r) for r in rows][:limit]
+        if results:
+            logger.info("Found %d similar error records for query '%s'",
+                         len(results), query[:30])
+        return results
     finally:
         conn.close()

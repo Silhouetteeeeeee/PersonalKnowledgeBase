@@ -8,6 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 class ClassifyOutput(BaseModel):
+    reasoning_trace: str = Field(
+        description="Step-by-step reasoning: why this category, why this confidence level, what knowledge was considered"
+    )
     category: str = Field(
         description="Category hierarchy, e.g. 'programming/python' or 'life/health'"
     )
@@ -46,4 +49,13 @@ def classify_and_answer(state: dict) -> dict:
         "confidence": result.confidence,
         "needs_search": result.needs_search,
         "needs_store": result.needs_store,
+        "logic_chain": [{
+            "node": "classify_and_answer",
+            "action": "生成初始答案",
+            "reasoning": result.reasoning_trace,
+            "category": result.category,
+            "confidence": result.confidence,
+            "needs_search": result.needs_search,
+            "needs_store": result.needs_store,
+        }],
     }

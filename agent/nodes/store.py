@@ -69,15 +69,25 @@ def store(state: dict) -> dict:
         logger.info("All knowledge points already exist, nothing to store")
         return {}
 
+    reasoning_log_path = state.get("reasoning_log_path", "")
     knowledge_points = [
         {
             "knowledge_text": kp.knowledge_text,
             "source_question": state["user_message"],
             "category": result.category,
             "tags": kp.tags,
+            "reasoning_log_path": reasoning_log_path,
         }
         for kp in new_points
     ]
-    save_knowledge_points_bulk_with_embeddings(knowledge_points)
+    ids = save_knowledge_points_bulk_with_embeddings(knowledge_points)
 
-    return {"category": result.category}
+    return {
+        "category": result.category,
+        "stored_knowledge_ids": ids,
+        "logic_chain": [{
+            "node": "store",
+            "action": f"存储 {len(ids)} 条知识点",
+            "reasoning": f"分类: {result.category}, 知识点数: {len(ids)}",
+        }],
+    }

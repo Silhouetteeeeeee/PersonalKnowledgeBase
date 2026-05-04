@@ -33,6 +33,9 @@ def init_db() -> None:
             source_question TEXT NOT NULL,
             category TEXT NOT NULL,
             tags TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'active',
+            corrected_text TEXT DEFAULT '',
+            reasoning_log_path TEXT DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -49,6 +52,32 @@ def init_db() -> None:
             source_user_id TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS error_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_message TEXT NOT NULL,
+            wrong_answer TEXT NOT NULL,
+            correct_answer TEXT DEFAULT '',
+            category TEXT DEFAULT '',
+            contradiction_details TEXT DEFAULT '',
+            error_type TEXT DEFAULT 'unknown',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE VIRTUAL TABLE IF NOT EXISTS error_vectors USING vec0(
+            embedding float[512] distance_metric=cosine
+        );
     """)
+    # Schema migration for existing databases
+    try:
+        conn.execute("ALTER TABLE knowledge_points ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE knowledge_points ADD COLUMN corrected_text TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE knowledge_points ADD COLUMN reasoning_log_path TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
