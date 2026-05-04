@@ -11,7 +11,7 @@ def retrieve(state: dict) -> dict:
 
     # Step 1: Vector search (recall) — expand limit for reranker candidates
     try:
-        candidates = search_knowledge_points_semantic(query, limit=20)
+        candidates = search_knowledge_points_semantic(query, threshold=0.6, limit=20)
     except Exception as e:
         logger.warning("Semantic search failed: %s, falling back to keyword", e)
         candidates = []

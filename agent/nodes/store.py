@@ -22,7 +22,10 @@ class DistilledPoint(BaseModel):
 
 
 class DistillOutput(BaseModel):
-    category: str = Field(description="Category for the knowledge, e.g. 'databases/redis'")
+    category: str = Field(
+        description="Category for the knowledge. "
+                    "Support up to four-tier hierarchical categories (e.g., databases/nosql/redis/commands)"
+    )
     knowledge_points: list[DistilledPoint] = Field(
         description="Knowledge points distilled from the Q&A"
     )
@@ -61,7 +64,8 @@ def store(state: dict) -> dict:
         f"Answer: {state['answer']}"
     )
     if existing_cats:
-        prompt += f"\n\n{existing_cats}\n请优先选择最匹配的已有分类，仅当完全不匹配时创建新分类。"
+        prompt += (f"\n\n已有分类：{existing_cats}\n请优先选择最匹配的已有分类，仅当完全不匹配时创建新分类。"
+                   f"如果当前知识点属于某个已有分类的子类别，请使用多级分类格式（如：）")
     result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
 
     result.category = normalize_category_str(result.category)

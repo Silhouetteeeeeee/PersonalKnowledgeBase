@@ -215,22 +215,26 @@ def find_similar_knowledge(knowledge_text: str, threshold: float = 0.25) -> list
         conn.close()
 
 
-def search_knowledge_points_semantic(query: str, limit: int = 5) -> list[dict]:
+def search_knowledge_points_semantic(query: str, threshold: float = 0.25, limit: int = 5) -> list[dict]:
     """Semantic search for the retrieve node."""
     embedding = generate_embedding(query)
     conn = get_connection()
     try:
         rows = conn.execute(
-            """SELECT kp.*, v.distance
-               FROM (
-                   SELECT rowid, distance
-                   FROM knowledge_vectors
-                   WHERE embedding MATCH ?
-                     AND k = ?
-               ) v
-               JOIN knowledge_points kp ON kp.id = v.rowid
-               ORDER BY v.distance""",
-            (serialize_float32(embedding), limit * 4),
+            """
+                SELECT kp.*, v.distance
+                FROM (
+                    SELECT rowid, distance
+                    FROM knowledge_vectors
+                    WHERE 
+                        embedding MATCH ?
+                        AND k = ?
+                ) v
+                JOIN knowledge_points kp ON kp.id = v.rowid
+                where 
+                    distance <= ?
+                ORDER BY v.distance""",
+            (serialize_float32(embedding), limit, threshold),
         ).fetchall()
         results = [dict(r) for r in rows][:limit]
         logger.info("Semantic retrieval found %d results for query '%s'",
