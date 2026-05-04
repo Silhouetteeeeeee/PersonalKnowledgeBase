@@ -34,15 +34,28 @@ _reranker: Optional[any] = None
 _reranker_lock = threading.Lock()
 
 
+def _get_reranker_model_path() -> str:
+    """Resolve reranker model path via ModelScope (works in China)."""
+    from modelscope.hub.snapshot_download import snapshot_download
+    try:
+        path = snapshot_download("BAAI/bge-reranker-v2-m3")
+        logger.info("Reranker model path (ModelScope): %s", path)
+        return path
+    except Exception as e:
+        logger.warning("ModelScope download failed: %s, trying HuggingFace ID", e)
+        return "BAAI/bge-reranker-v2-m3"
+
+
 def _get_reranker():
     global _reranker
     if _reranker is None:
         with _reranker_lock:
             if _reranker is None:
-                from FlagEmbedding import FlagReranker
-                logger.info("Loading reranker model (BAAI/bge-reranker-v2-m3)...")
+                from sentence_transformers import CrossEncoder
+                model_path = _get_reranker_model_path()
+                logger.info("Loading reranker model from %s ...", model_path)
                 t0 = time.time()
-                _reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=False)
+                _reranker = CrossEncoder(model_path)
                 logger.info("Reranker model loaded in %.2fs", time.time() - t0)
     return _reranker
 
@@ -55,14 +68,14 @@ def rerank_knowledge(query: str, candidates: list[dict], top_k: int = 5) -> list
     """
     pairs = [(query, doc["knowledge_text"]) for doc in candidates]
     model = _get_reranker()
-    scores = model.compute_score(pairs)
+    scores = model.predict(pairs)
 
     scored = list(zip(candidates, scores))
     scored.sort(key=lambda x: x[1], reverse=True)
 
     results = []
     for doc, score in scored[:top_k]:
-        doc["relevance_score"] = score
+        doc["relevance_score"] = float(score)
         results.append(doc)
     return results
 

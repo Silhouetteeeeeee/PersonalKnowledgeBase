@@ -377,3 +377,13 @@ def test_graph_includes_fact_check():
     assert "reflect" in g.nodes
     assert "correct_knowledge" in g.nodes
     assert "record_error" in g.nodes
+
+def test_reranker_model():
+    from modelscope.hub.snapshot_download import snapshot_download
+    from sentence_transformers import CrossEncoder
+
+    local_path = snapshot_download("BAAI/bge-reranker-v2-m3")
+    reranker = CrossEncoder(local_path)
+    scores = reranker.predict([("What is Python?", "Python is a programming language")])
+    assert len(scores) == 1
+    assert isinstance(float(scores[0]), float)
