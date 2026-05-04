@@ -40,6 +40,66 @@ def test_retrieve_with_results():
     assert "Python" in result["stored_knowledge"][0]["knowledge_text"]
 
 
+def test_retrieve_reranks_when_enough_candidates(monkeypatch):
+    """Verify that retrieve calls reranker when >3 candidates exist."""
+    from agent.nodes.retrieve import retrieve
+
+    fake_candidates = [
+        {"knowledge_text": f"doc {i}", "distance": i * 0.1}
+        for i in range(10)
+    ]
+
+    def mock_semantic(*args, **kwargs):
+        return fake_candidates
+
+    def mock_rerank(query, candidates, top_k):
+        scored = list(reversed(candidates))
+        for doc in scored[:top_k]:
+            doc["relevance_score"] = 1.0
+        return scored[:top_k]
+
+    monkeypatch.setattr("agent.nodes.retrieve.search_knowledge_points_semantic", mock_semantic)
+    monkeypatch.setattr("agent.nodes.retrieve.rerank_knowledge", mock_rerank)
+
+    result = retrieve({"user_message": "test query"})
+    assert len(result["stored_knowledge"]) == 5
+    assert result["stored_knowledge"][0]["knowledge_text"] == "doc 9"
+    assert "relevance_score" in result["stored_knowledge"][0]
+
+
+def test_retrieve_skips_rerank_when_few_candidates(monkeypatch):
+    """Verify that retrieve skips reranker when ≤3 candidates exist."""
+    from agent.nodes.retrieve import retrieve
+
+    fake_candidates = [
+        {"knowledge_text": f"doc {i}", "distance": i * 0.1}
+        for i in range(3)
+    ]
+
+    monkeypatch.setattr("agent.nodes.retrieve.search_knowledge_points_semantic", lambda *a, **kw: fake_candidates)
+    monkeypatch.setattr("agent.nodes.retrieve.rerank_knowledge", lambda *a, **kw: (_ for _ in ()).throw(Exception("should not be called")))
+
+    result = retrieve({"user_message": "test"})
+    assert len(result["stored_knowledge"]) == 3
+
+
+def test_retrieve_fallback_when_reranker_fails(monkeypatch):
+    """Verify that retrieve falls back to vector ordering when reranker fails."""
+    from agent.nodes.retrieve import retrieve
+
+    fake_candidates = [
+        {"knowledge_text": f"doc {i}", "distance": i * 0.1}
+        for i in range(10)
+    ]
+
+    monkeypatch.setattr("agent.nodes.retrieve.search_knowledge_points_semantic", lambda *a, **kw: fake_candidates)
+    monkeypatch.setattr("agent.nodes.retrieve.rerank_knowledge", lambda *a, **kw: (_ for _ in ()).throw(Exception("reranker crash")))
+
+    result = retrieve({"user_message": "test"})
+    assert len(result["stored_knowledge"]) == 5
+    assert result["stored_knowledge"][0]["knowledge_text"] == "doc 0"
+
+
 def test_classify_and_answer():
     from agent.nodes.classify_and_answer import classify_and_answer
 
