@@ -9,6 +9,9 @@ from agent.tools.web_search import search_web
 
 logger = logging.getLogger(__name__)
 
+# Agent recursion safety — prevents infinite tool-calling loops
+MAX_AGENT_STEPS = 10
+
 
 class ClassifyOutput(BaseModel):
     reasoning_trace: str = Field(
@@ -71,32 +74,18 @@ def _build_system_prompt(state: dict) -> str:
     )
 
 
-def classify_and_answer(state: dict) -> dict:
-    logger.info(
-        "Classifying question (stored_knowledge=%d)",
-        len(state.get("stored_knowledge", [])),
+def _fallback_answer(state: dict) -> dict:
+    """Generate a direct structured answer without tools when the agent loop fails."""
+    logger.warning("Agent loop failed, falling back to direct generation")
+    prompt = _build_system_prompt(state) + (
+        f"## 用户问题\n"
+        f"{state['user_message']}\n\n"
+        f"请按照上述要求进行分析，并以结构化格式输出结果。"
     )
-
-    @tool
-    def web_search_tool(query: str) -> str:
-        """Search the web for current information when the question involves recent events, facts, statistics, or topics where accuracy verification is needed. Do NOT use for common knowledge, basic concepts, or greetings."""
-        results = search_web(query)
-        return "\n".join(results) if results else "未找到相关结果。"
-
-    agent = create_react_agent(
-        model=LLM.get_model(),
-        tools=[web_search_tool],
-        system_prompt=_build_system_prompt(state),
-        response_format=ClassifyOutput,
-    )
-
-    result = agent.invoke({
-        "messages": [("user", state["user_message"])],
-    })
-
-    structured = result.get("structured_response")
-    if structured is None:
-        logger.error("Agent did not produce structured response")
+    try:
+        result = LLM.generate_structured(prompt, ClassifyOutput)
+    except Exception as e:
+        logger.error("Fallback generation also failed: %s", e)
         return {
             "answer": "",
             "category": "unknown",
@@ -105,9 +94,63 @@ def classify_and_answer(state: dict) -> dict:
             "logic_chain": [{
                 "node": "classify_and_answer",
                 "action": "生成答案失败",
-                "reasoning": "Agent failed to produce structured output",
+                "reasoning": f"Agent and fallback both failed: {e}",
             }],
         }
+
+    return {
+        "category": result.category,
+        "answer": result.answer,
+        "confidence": result.confidence * 0.8,
+        "needs_store": result.needs_store,
+        "logic_chain": [{
+            "node": "classify_and_answer",
+            "action": "网络搜索超时，基于知识直接回答",
+            "reasoning": result.reasoning_trace,
+            "category": result.category,
+            "confidence": result.confidence * 0.8,
+            "needs_store": result.needs_store,
+            "search_performed": False,
+            "fallback": True,
+        }],
+    }
+
+
+def classify_and_answer(state: dict) -> dict:
+    logger.info(
+        "Classifying question (stored_knowledge=%d)",
+        len(state.get("stored_knowledge", [])),
+    )
+
+    @tool
+    def web_search_tool(query: str) -> str:
+        """Search the web for current information. Only use for recent events or facts you cannot verify. If search returns no results, answer from your existing knowledge — do not retry."""
+        results = search_web(query)
+        if not results:
+            return "__SEARCH_UNAVAILABLE__ Please answer based on your existing knowledge. Do NOT search again."
+        return "\n".join(results)
+
+    agent = create_react_agent(
+        model=LLM.get_model(),
+        tools=[web_search_tool],
+        system_prompt=_build_system_prompt(state),
+        response_format=ClassifyOutput,
+    )
+    # Prevent infinite tool-calling loops
+    agent.recursion_limit = MAX_AGENT_STEPS
+
+    try:
+        result = agent.invoke({
+            "messages": [("user", state["user_message"])],
+        })
+        structured = result.get("structured_response")
+    except Exception as e:
+        logger.error("Agent recursion limit exceeded or error: %s", e)
+        return _fallback_answer(state)
+
+    if structured is None:
+        logger.error("Agent did not produce structured response")
+        return _fallback_answer(state)
 
     # Determine if search was performed by checking for tool calls
     search_performed = any(
