@@ -30,6 +30,43 @@ def _get_embedder():
     return _embedder
 
 
+_reranker: Optional[any] = None
+_reranker_lock = threading.Lock()
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        with _reranker_lock:
+            if _reranker is None:
+                from FlagEmbedding import FlagReranker
+                logger.info("Loading reranker model (BAAI/bge-reranker-v2-m3)...")
+                t0 = time.time()
+                _reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=False)
+                logger.info("Reranker model loaded in %.2fs", time.time() - t0)
+    return _reranker
+
+
+def rerank_knowledge(query: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
+    """Rerank candidate knowledge points using a cross-encoder model.
+
+    Takes (query, knowledge_text) pairs through the reranker to get relevance
+    scores, then returns top_k candidates sorted by score descending.
+    """
+    pairs = [(query, doc["knowledge_text"]) for doc in candidates]
+    model = _get_reranker()
+    scores = model.compute_score(pairs)
+
+    scored = list(zip(candidates, scores))
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    results = []
+    for doc, score in scored[:top_k]:
+        doc["relevance_score"] = score
+        results.append(doc)
+    return results
+
+
 def generate_embedding(text: str) -> list[float]:
     """Generate a 512-dim embedding vector for the given text."""
     model = _get_embedder()
