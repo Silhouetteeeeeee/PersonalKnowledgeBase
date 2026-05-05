@@ -45,7 +45,7 @@ def save_profile(profile: dict) -> None:
     """Backup current profile, write new profile, clean old backups."""
     _ensure_dirs()
     if PROFILE_PATH.exists():
-        timestamp = datetime.now().strftime("%Y-%m-%dT%H%M%S")
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H%M%S%f")
         backup_path = BACKUP_DIR / f"{timestamp}.json"
         shutil.copy2(PROFILE_PATH, backup_path)
         _clean_old_backups()
