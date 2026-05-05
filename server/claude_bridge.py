@@ -118,10 +118,18 @@ class ClaudeCodeBridge:
 
         logger.info("Creating tmux session '%s'", self.session_name)
         subprocess.run(
-            ["tmux", "new-session", "-d", "-s", self.session_name,
-             "env", "PAGER=cat", "claude"],
+            ["tmux", "new-session", "-d", "-s", self.session_name],
             check=True,
         )
+        subprocess.run(
+            ["tmux", "send-keys", "-t", self.session_name, "claude"],
+            check=True,
+        )
+        subprocess.run(
+            ["tmux", "send-keys", "-t", self.session_name, "Enter"],
+            check=True,
+        )
+
         self._session_active = True
         self._wait_for_prompt()
 
@@ -165,7 +173,7 @@ class ClaudeCodeBridge:
     def _capture(self) -> str:
         """Capture full visible pane content."""
         r = subprocess.run(
-            ["tmux", "capture-pane", "-t", self.session_name, "-p"],
+            ["tmux", "capture-pane", "-t", self.session_name, "-p", "-S", "-"],
             capture_output=True, text=True,
         )
         return r.stdout if r.returncode == 0 else ""
