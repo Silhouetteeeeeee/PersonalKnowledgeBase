@@ -167,8 +167,7 @@ class TestClaudeCodeBridge:
         bridge = ClaudeCodeBridge()
         bridge._send("hello world")
 
-        # Should call set-buffer, paste-buffer, then send-keys Enter
-        assert any("set-buffer" in c for c in calls)
+        # Should call send-keys with message, then send-keys Enter
         assert any("hello world" in c for c in calls)
         assert any("Enter" in c for c in calls)
 

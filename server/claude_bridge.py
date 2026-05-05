@@ -152,14 +152,9 @@ class ClaudeCodeBridge:
     # ── Message send / receive ──────────────────────────────────
 
     def _send(self, message: str):
-        """Send message via tmux paste buffer (handles UTF-8 properly)."""
+        """Send message via tmux send-keys (handles UTF-8 without -l flag)."""
         subprocess.run(
-            ["tmux", "set-buffer", "-b", "_code_bridge", message],
-            check=True,
-        )
-        subprocess.run(
-            ["tmux", "paste-buffer", "-b", "_code_bridge",
-             "-t", self.session_name, "-d"],
+            ["tmux", "send-keys", "-t", self.session_name, message],
             check=True,
         )
         subprocess.run(
