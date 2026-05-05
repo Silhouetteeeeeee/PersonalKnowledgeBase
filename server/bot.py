@@ -8,12 +8,16 @@ import logging
 import os
 
 from aibot import WSClient, WSClientOptions
-from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET
+from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET, CLAUDE_CODE_BRIDGE_ENABLED
 from agent.graph import build_graph
 from storage.profile import load_profile
 
+from server.claude_bridge import ClaudeCodeBridge
+
 logger = logging.getLogger(__name__)
 graph = build_graph()
+
+claude_bridge = ClaudeCodeBridge() if CLAUDE_CODE_BRIDGE_ENABLED else None
 
 
 class KnowledgeBot:
@@ -41,6 +45,20 @@ class KnowledgeBot:
             user_id = body.get("from", {}).get("userid", "unknown")
 
             if not content:
+                return
+
+            # ── Claude Code bridge route ──
+            if content.startswith("/code"):
+                cmd = content[5:].strip()
+                if CLAUDE_CODE_BRIDGE_ENABLED and claude_bridge:
+                    response = claude_bridge.handle(cmd)
+                else:
+                    response = "⚠️ 远程编码功能未启用\n请在 .env 中设置 CLAUDE_CODE_BRIDGE_ENABLED=true"
+                await self.client.reply(frame, {
+                    "msgtype": "markdown",
+                    "markdown": {"content": response},
+                })
+                logger.info("Claude Code bridge response sent to user_id=%s", user_id)
                 return
 
             logger.info("Received text from %s: %s", user_id, content[:60])
