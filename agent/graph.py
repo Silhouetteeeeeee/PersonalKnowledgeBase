@@ -13,6 +13,7 @@ from agent.nodes.correct_knowledge import correct_knowledge
 from agent.nodes.record_error import record_error
 from agent.nodes.store import store
 from agent.nodes.respond import respond
+from agent.nodes.update_profile import update_profile
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ def build_graph() -> StateGraph:
     builder.add_node("reflect", reflect)
     builder.add_node("correct_knowledge", correct_knowledge)
     builder.add_node("record_error", record_error)
+    builder.add_node("update_profile", update_profile)
 
     builder.set_entry_point("parse")
 
@@ -93,7 +95,8 @@ def build_graph() -> StateGraph:
     builder.add_edge("parse", "retrieve")
     builder.add_edge("retrieve", "classify_and_answer")
 
-    # classify_and_answer → fact_check (search is handled internally by the node)
+    # classify_and_answer → [update_profile, fact_check] (parallel fan-out)
+    builder.add_edge("classify_and_answer", "update_profile")
     builder.add_edge("classify_and_answer", "fact_check")
     builder.add_edge("search_web", "regenerate")
     builder.add_edge("regenerate", "fact_check")
