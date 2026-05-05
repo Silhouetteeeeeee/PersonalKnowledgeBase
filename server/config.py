@@ -13,3 +13,6 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 
 OUTPUT_LANGUAGE = os.getenv("OUTPUT_LANGUAGE", "English")
 BAIDU_AI_SEARCH_API_KEY = os.getenv("BAIDU_AI_SEARCH_API_KEY", "")
+
+# Claude Code Bridge (remote coding via WeChat Work)
+CLAUDE_CODE_BRIDGE_ENABLED = os.getenv("CLAUDE_CODE_BRIDGE_ENABLED", "false").lower() == "true"
