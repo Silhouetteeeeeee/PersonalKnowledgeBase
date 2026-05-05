@@ -97,6 +97,7 @@ class TestClaudeCodeBridge:
         assert not bridge._session_active
 
     def test_ensure_session_creates_when_missing(self, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}")
         calls = []
 
         def fake_run(*args, **kwargs):
@@ -104,8 +105,6 @@ class TestClaudeCodeBridge:
             calls.append(cmd)
             if cmd[0] == "tmux" and cmd[1] == "has-session":
                 return FakeResult(returncode=1)
-            if cmd[0] == "which":
-                return FakeResult(returncode=0)
             if cmd[0] == "tmux" and cmd[1] == "new-session":
                 return FakeResult()
             if cmd[0] == "tmux" and cmd[1] == "capture-pane":
@@ -142,16 +141,17 @@ class TestClaudeCodeBridge:
         assert len(new_session_calls) == 0
 
     def test_ensure_session_fails_without_tmux(self, monkeypatch):
-        def fake_run(*args, **kwargs):
-            cmd = args[0]
-            if cmd[0] == "which" and cmd[1] == "tmux":
-                return FakeResult(returncode=1)
-            return FakeResult()
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr("shutil.which", lambda cmd: None if cmd == "tmux" else "/usr/bin/claude")
 
         bridge = ClaudeCodeBridge()
         with pytest.raises(FileNotFoundError, match="tmux"):
+            bridge._ensure_session()
+
+    def test_ensure_session_fails_without_claude(self, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda cmd: None if cmd == "claude" else "/usr/bin/tmux")
+
+        bridge = ClaudeCodeBridge()
+        with pytest.raises(FileNotFoundError, match="claude"):
             bridge._ensure_session()
 
     def test_send_keys_called(self, monkeypatch):
@@ -167,21 +167,19 @@ class TestClaudeCodeBridge:
         bridge = ClaudeCodeBridge()
         bridge._send("hello world")
 
-        send_keys_calls = [c for c in calls if c[:2] == ["tmux", "send-keys"]]
-        assert len(send_keys_calls) == 2
-        assert "-l" in send_keys_calls[0]
-        assert "hello world" in send_keys_calls[0]
-        assert "Enter" in send_keys_calls[1]
+        # Should call set-buffer, paste-buffer, then send-keys Enter
+        assert any("set-buffer" in c for c in calls)
+        assert any("hello world" in c for c in calls)
+        assert any("Enter" in c for c in calls)
 
     def test_handle_send_and_capture(self, monkeypatch):
         """Verify handle() creates session, sends keys, captures output."""
+        monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}")
         calls = []
 
         def fake_run(*args, **kwargs):
             cmd = args[0]
             calls.append(cmd)
-            if cmd[0] == "which":
-                return FakeResult(returncode=0)
             if cmd[0] == "tmux" and cmd[1] == "has-session":
                 return FakeResult(returncode=1)
             if cmd[0] == "tmux" and cmd[1] == "new-session":

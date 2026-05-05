@@ -1,6 +1,7 @@
 import atexit
 import logging
 import re
+import shutil
 import subprocess
 import time
 
@@ -108,7 +109,7 @@ class ClaudeCodeBridge:
                 return
 
         for cmd in ("tmux", "claude"):
-            if subprocess.run(["which", cmd], capture_output=True).returncode != 0:
+            if shutil.which(cmd) is None:
                 raise FileNotFoundError(
                     f"`{cmd}` 未找到，请先安装 {cmd}"
                     if cmd == "tmux" else
@@ -151,9 +152,14 @@ class ClaudeCodeBridge:
     # ── Message send / receive ──────────────────────────────────
 
     def _send(self, message: str):
-        """Type message into tmux pane and press Enter."""
+        """Send message via tmux paste buffer (handles UTF-8 properly)."""
         subprocess.run(
-            ["tmux", "send-keys", "-t", self.session_name, "-l", message],
+            ["tmux", "set-buffer", "-b", "_code_bridge", message],
+            check=True,
+        )
+        subprocess.run(
+            ["tmux", "paste-buffer", "-b", "_code_bridge",
+             "-t", self.session_name, "-d"],
             check=True,
         )
         subprocess.run(
