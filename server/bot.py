@@ -10,6 +10,7 @@ import os
 from aibot import WSClient, WSClientOptions
 from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET
 from agent.graph import build_graph
+from storage.profile import load_profile
 
 logger = logging.getLogger(__name__)
 graph = build_graph()
@@ -49,6 +50,7 @@ class KnowledgeBot:
                     "user_message": content,
                     "user_id": user_id,
                     "timestamp": "",
+                    "user_profile": load_profile(),
                 })
                 response = result.get("final_response", "")
 

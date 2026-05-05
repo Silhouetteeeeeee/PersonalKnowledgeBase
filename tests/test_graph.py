@@ -1,5 +1,6 @@
 import pytest
 from storage.database import init_db
+from storage.profile import load_profile
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +28,7 @@ def test_graph_short_circuit():
         "user_message": "What is Python?",
         "user_id": "test_user",
         "timestamp": "2026-05-02T12:00:00",
+        "user_profile": load_profile(),
     })
     print(result)
     assert result["final_response"]
@@ -43,5 +45,6 @@ def test_graph_with_no_answer():
         "user_message": "",
         "user_id": "test_user",
         "timestamp": "2026-05-02T12:00:00",
+        "user_profile": load_profile(),
     })
     assert "final_response" in result
