@@ -36,3 +36,4 @@ class AgentState(TypedDict):
 
     # Reasoning trace (accumulates across nodes via operator.add)
     logic_chain: Annotated[list[dict], operator.add]
+    user_profile: dict
