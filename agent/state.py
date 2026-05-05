@@ -18,6 +18,7 @@ class AgentState(TypedDict):
     reasoning_log_path: str
     contradiction_found: bool
     contradiction_details: str
+    search_time: int
 
     # Reflection fields
     contradiction_severity: str

@@ -81,6 +81,10 @@ def test_extract_text_from_xmind(tmp_path):
     assert "孙节点" in text
     assert "备注内容" in text
 
+    from xmindparser import xmind_to_markdown
+    t = xmind_to_markdown("D:\\dudu\\Documents\\JVM.xmind")
+    print(t)
+
 
 def test_compute_file_hash():
     from storage.file_processor import compute_file_hash

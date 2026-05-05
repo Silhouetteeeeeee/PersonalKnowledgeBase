@@ -1,16 +1,19 @@
 import logging
+from datetime import datetime
 
+from langgraph.prebuilt import ToolRuntime
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from langchain.agents import create_agent as create_react_agent
 
+from agent.state import AgentState
 from agent.utils.llm import LLM
-from agent.tools.web_search import search_web
+from agent.tools.web_search import search_web, search_web_from_baidu
 
 logger = logging.getLogger(__name__)
 
 # Agent recursion safety — prevents infinite tool-calling loops
-MAX_AGENT_STEPS = 10
+MAX_AGENT_STEPS = 5
 
 
 class ClassifyOutput(BaseModel):
@@ -39,7 +42,8 @@ def _build_system_prompt(state: dict) -> str:
             context += f"- {k['knowledge_text']}\n"
 
     return (
-        f"你是一个专业的智能问答助手，负责分析问题并生成准确、有用的回答。\n\n"
+        f"你是一个专业的智能问答助手，负责分析问题并生成准确、有用的回答。"
+        f"同时你也是用户的生活助手，你应该记录用户的生活习惯，基本信息\n\n"
         f"## 任务要求\n"
         f"1. 仔细分析用户的问题，理解其意图和背景\n"
         f"2. 结合提供的相关知识（如果有）进行推理\n"
@@ -48,6 +52,13 @@ def _build_system_prompt(state: dict) -> str:
         f"5. 判断是否应该存储此问答作为知识（事实性、教育性内容需要存储；闲聊、问候不需要）\n"
         f"6. 生成清晰、准确、有帮助的回答\n"
         f"7. 详细记录你的推理过程\n\n"
+        f"8. 如果用户并非提问，无需进行网络搜索，以一个朋友的角度进行回答，或者简单地回答收到即可"
+        f"## ⚠️ 网络搜索使用规则（重要）\n"
+        f"1. **仅在必要时搜索**：只有当你完全不知道答案，或需要最新信息时才搜索\n"
+        f"2. **最多搜索1次**：每次对话只能调用一次网络搜索工具，禁止重复搜索\n"
+        f"3. **基于现有知识优先**：优先使用你的训练知识和提供的上下文回答问题\n"
+        f"4. **搜索失败处理**：如果搜索返回空结果或失败，立即停止搜索，用已有知识回答\n"
+        f"5. **常识问题不搜索**：编程基础、数学公式、历史事实等常识性问题无需搜索\n\n"
         f"## 分类指南\n"
         f"- programming: 编程、软件开发、算法等技术问题\n"
         f"- life: 日常生活、健康、饮食等非技术问题\n"
@@ -64,7 +75,8 @@ def _build_system_prompt(state: dict) -> str:
         f"需要存储的情况：\n"
         f"- 事实性信息（定义、概念、原理、方法等）\n"
         f"- 教育性内容（教程、示例、最佳实践等）\n"
-        f"- 有价值的问答对，可能对后续问题有帮助\n\n"
+        f"- 有价值的问答对，可能对后续问题有帮助\n"
+        f"- 用户提供的基本信息，生活习惯，学习计划等等\n\n"
         f"不需要存储的情况：\n"
         f"- 简单的问候、感谢等社交性对话\n"
         f"- 纯主观的个人观点或偏好\n"
@@ -122,14 +134,6 @@ def classify_and_answer(state: dict) -> dict:
         len(state.get("stored_knowledge", [])),
     )
 
-    @tool
-    def web_search_tool(query: str) -> str:
-        """Search the web for current information. Only use for recent events or facts you cannot verify. If search returns no results, answer from your existing knowledge — do not retry."""
-        results = search_web(query)
-        if not results:
-            return "__SEARCH_UNAVAILABLE__ Please answer based on your existing knowledge. Do NOT search again."
-        return "\n".join(results)
-
     agent = create_react_agent(
         model=LLM.get_model(),
         tools=[web_search_tool],
@@ -140,6 +144,7 @@ def classify_and_answer(state: dict) -> dict:
     agent.recursion_limit = MAX_AGENT_STEPS
 
     try:
+        state["search_time"] = 0
         result = agent.invoke({
             "messages": [("user", state["user_message"])],
         })
@@ -179,3 +184,29 @@ def classify_and_answer(state: dict) -> dict:
             "search_performed": search_performed,
         }],
     }
+
+
+@tool
+def web_search_tool(query: str, runtime: ToolRuntime[AgentState]) -> str:
+    """
+        只有当你确实不知道相关信息的时候需要进行网络搜索来给你更多的资料生成回答，对于常识问题无需网络搜索。
+        如果网络搜索失败请不要一直重试，以你已有的知识进行回答问题
+        请不要一直
+    """
+    state = runtime.state
+    if state['search_time'] > MAX_AGENT_STEPS:
+        return "__EXCEED_SEARCH_LIMIT__ Please answer based on your existing knowledge. Do NOT search again."
+    logger.info(f"Need to search on the web. {state.get('search_time', 0)}st question is {query}")
+    results = search_web_from_baidu(query)
+    state['search_time'] = state.get('search_time', 0) + 1
+    if not results:
+        return "__SEARCH_UNAVAILABLE__ Please answer based on your existing knowledge. Do NOT search again."
+    return "\n".join(results)
+
+@tool
+def get_current_time() -> datetime:
+    """
+        获取当前时间
+        :return: 返回当前时间 e.g.  2026-05-04 15:30:45.123456
+    """
+    return datetime.now()

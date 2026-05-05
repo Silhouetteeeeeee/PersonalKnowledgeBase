@@ -36,8 +36,8 @@ def init_db() -> None:
             status TEXT NOT NULL DEFAULT 'active',
             corrected_text TEXT DEFAULT '',
             reasoning_log_path TEXT DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vectors USING vec0(
             embedding float[512] distance_metric=cosine
@@ -50,7 +50,7 @@ def init_db() -> None:
             extracted_text TEXT NOT NULL,
             knowledge_ids TEXT NOT NULL DEFAULT '[]',
             source_user_id TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
         CREATE TABLE IF NOT EXISTS error_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +60,7 @@ def init_db() -> None:
             category TEXT DEFAULT '',
             contradiction_details TEXT DEFAULT '',
             error_type TEXT DEFAULT 'unknown',
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS error_vectors USING vec0(
             embedding float[512] distance_metric=cosine

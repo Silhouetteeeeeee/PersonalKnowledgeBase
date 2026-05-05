@@ -38,7 +38,7 @@ def search_web_from_baidu(query: str) -> list[str]:
         response = requests.post(url, json=data, headers=headers)
         response.raise_for_status()
         data = response.json()
-        return data["choice"]
+        return [d["message"]["content"] for d in data["choices"]]
     except Exception as e:
         return [f"[Search error: {e}]"]
 
