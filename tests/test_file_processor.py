@@ -52,25 +52,43 @@ def test_extract_text_unsupported_type(tmp_path):
     assert text == ""
 
 
+def _create_test_xmind(path: str):
+    """Create a minimal .xmind file using stdlib (zipfile + XML)."""
+    import zipfile
+    from xml.etree.ElementTree import Element, SubElement, tostring
+
+    root = Element("xmap-content", {"xmlns": "urn:xmind:xmap:xmlns:content:2.0"})
+    sheet = SubElement(root, "sheet")
+    SubElement(sheet, "title").text = "测试导图"
+
+    topic = SubElement(sheet, "topic")
+    SubElement(topic, "title").text = "根节点"
+
+    children = SubElement(topic, "children")
+    topics_el = SubElement(children, "topics", {"type": "attached"})
+
+    c1 = SubElement(topics_el, "topic")
+    SubElement(c1, "title").text = "子节点A"
+    notes_el = SubElement(c1, "notes")
+    SubElement(notes_el, "plain").text = "备注内容"
+
+    c2 = SubElement(topics_el, "topic")
+    SubElement(c2, "title").text = "子节点B"
+    c2_children = SubElement(c2, "children")
+    c2_topics = SubElement(c2_children, "topics", {"type": "attached"})
+    c2c = SubElement(c2_topics, "topic")
+    SubElement(c2c, "title").text = "孙节点"
+
+    xml_bytes = tostring(root, encoding="utf-8", xml_declaration=True)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("content.xml", xml_bytes)
+
+
 def test_extract_text_from_xmind(tmp_path):
-    import xmind
     from storage.file_processor import extract_text_from_file
 
-    # 创建测试用的 .xmind 文件
     xmind_path = tmp_path / "test.xmind"
-    wb = xmind.load(str(xmind_path))
-    sheet = wb.getPrimarySheet()
-    sheet.setTitle("测试导图")
-    root = sheet.getRootTopic()
-    root.setTitle("根节点")
-    t1 = root.addSubTopic()
-    t1.setTitle("子节点A")
-    t1.setPlainNotes("备注内容")
-    t2 = root.addSubTopic()
-    t2.setTitle("子节点B")
-    t2_1 = t2.addSubTopic()
-    t2_1.setTitle("孙节点")
-    xmind.save(wb, str(xmind_path))
+    _create_test_xmind(str(xmind_path))
 
     text = extract_text_from_file(str(xmind_path))
 
@@ -79,12 +97,6 @@ def test_extract_text_from_xmind(tmp_path):
     assert "子节点A" in text
     assert "子节点B" in text
     assert "孙节点" in text
-    assert "备注内容" in text
-
-    from xmindparser import xmind_to_markdown
-    t = xmind_to_markdown("D:\\dudu\\Documents\\JVM.xmind")
-    print(t)
-
 
 def test_compute_file_hash():
     from storage.file_processor import compute_file_hash

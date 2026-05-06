@@ -70,41 +70,33 @@ def _extract_text_from_docx(file_path: str) -> str:
 
 
 def _extract_text_from_xmind(file_path: str) -> str:
-    """使用 xmind SDK 提取 XMind 思维导图文字。"""
-    import xmind
+    """使用 xmindparser 提取 XMind 思维导图文字。"""
+    from xmindparser import xmind_to_dict
     try:
-        wb = xmind.load(file_path)
+        data = xmind_to_dict(file_path)
         lines = []
-
-        for sheet in wb.getSheets():
-            root = sheet.getRootTopic()
-            if root is None:
-                continue
-
-            lines.append(f"# {sheet.getTitle() or '思维导图'}")
-
-            def walk(topic, depth=0):
-                if topic is None:
-                    return
-                title = topic.getTitle()
-                if title:
-                    indent = "  " * depth
-                    lines.append(f"{indent}- {title}")
-
-                # 提取备注（getNotes 返回字符串）
-                notes = topic.getNotes()
-                if notes and isinstance(notes, str) and notes.strip():
-                    lines.append(f"{'  ' * (depth + 1)}[备注] {notes.strip()}")
-
-                for sub in topic.getSubTopics():
-                    walk(sub, depth + 1)
-
-            walk(root, depth=0)
-
+        for sheet in data:
+            title = sheet.get("title", "思维导图")
+            lines.append(f"# {title}")
+            topic = sheet.get("topic", {})
+            if topic:
+                _format_xmind_topic(topic, lines, level=2)
         return "\n".join(lines)
     except Exception as e:
         logger.error("XMind extraction failed for %s: %s", file_path, e)
         raise
+
+
+def _format_xmind_topic(topic: dict, lines: list, level: int = 2):
+    """递归格式化 XMind topic 为 markdown 文本。"""
+    title = topic.get("title", "")
+    if title:
+        lines.append(f"{'#' * level} {title}")
+    note = topic.get("note", "")
+    if note:
+        lines.append(f"> {note}")
+    for child in topic.get("topics", []):
+        _format_xmind_topic(child, lines, level + 1)
 
 
 def _extract_text_from_txt(file_path: str) -> str:
