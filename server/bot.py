@@ -11,11 +11,20 @@ from aibot import WSClient, WSClientOptions
 from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET, CLAUDE_CODE_BRIDGE_ENABLED
 from agent.graph import build_graph
 from storage.profile import load_profile
+from memory.session_manager import SessionManager
+from memory.context_builder import ContextBuilder
+from memory.message_history import MessageHistory
+from memory.episodic import EpisodicMemory
 
 from server.claude_bridge import ClaudeCodeBridge
 
 logger = logging.getLogger(__name__)
 graph = build_graph()
+
+session_manager = SessionManager()
+context_builder = ContextBuilder()
+message_history = MessageHistory()
+episodic_memory = EpisodicMemory()
 
 claude_bridge = ClaudeCodeBridge() if CLAUDE_CODE_BRIDGE_ENABLED else None
 
@@ -64,11 +73,43 @@ class KnowledgeBot:
             logger.info("Received text from %s: %s", user_id, content[:60])
 
             try:
+                # ── 上下文管理 ──
+                session = session_manager.lookup(user_id)
+                context = context_builder.build(user_id, session["id"], content)
+
+                session_manager.refresh(session["id"])
+
                 result = await asyncio.to_thread(graph.invoke, {
                     "user_message": content,
                     "user_id": user_id,
+                    "session_id": str(session["id"]),
+                    "message_history": context.get("history_section", ""),
+                    "episodic_memories": context.get("episodic_section", ""),
+                    "user_profile": load_profile(user_id),
                     "timestamp": "",
-                    "user_profile": load_profile(),
+                    "category": "",
+                    "confidence": 0.0,
+                    "needs_store": False,
+                    "search_results": [],
+                    "stored_knowledge": [],
+                    "stored_knowledge_ids": [],
+                    "answer": "",
+                    "final_response": "",
+                    "reasoning_log_path": "",
+                    "contradiction_found": False,
+                    "contradiction_details": "",
+                    "search_time": 0,
+                    "contradiction_severity": "",
+                    "contradiction_knowledge_ids": [],
+                    "contradiction_knowledge_texts": [],
+                    "reflection_result": "",
+                    "reflection_reasoning": "",
+                    "reflection_correction": "",
+                    "force_web_search": False,
+                    "correction_attempts": 0,
+                    "knowledge_corrected": False,
+                    "error_recorded": False,
+                    "logic_chain": [],
                 })
                 response = result.get("final_response", "")
 
@@ -79,6 +120,12 @@ class KnowledgeBot:
                     },
                 })
                 logger.info("Response sent to user_id=%s", user_id)
+
+                # ── 异步持久化（不阻塞回复）──
+                answer_text = result.get("final_response", "")
+                asyncio.create_task(self._save_turn(
+                    session["id"], user_id, content, answer_text, result.get("category", ""),
+                ))
             except Exception:
                 logger.exception("Error handling message from %s", user_id)
 
@@ -138,6 +185,15 @@ class KnowledgeBot:
             logger.info("File processing reply sent to user_id=%s", user_id)
         except Exception:
             logger.exception("Error processing file upload from %s", user_id)
+
+    async def _save_turn(self, session_id: int, user_id: str, user_msg: str, asst_msg: str, category: str):
+        """Persist conversation turn asynchronously (non-blocking)."""
+        try:
+            await asyncio.to_thread(message_history.add_message, session_id, user_id, "user", user_msg, category)
+            await asyncio.to_thread(message_history.add_message, session_id, user_id, "assistant", asst_msg, category)
+            await asyncio.to_thread(episodic_memory.summarize_and_embed, session_id, user_id)
+        except Exception as e:
+            logger.warning("Async memory persistence failed: %s", e)
 
     def run(self):
         self.client.run()
