@@ -81,3 +81,5 @@ def init_db() -> None:
         pass
     conn.commit()
     conn.close()
+    from memory.models import init_memory_tables
+    init_memory_tables()
