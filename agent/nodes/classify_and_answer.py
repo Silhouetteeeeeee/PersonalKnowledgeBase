@@ -67,6 +67,24 @@ def _build_system_prompt(state: dict) -> str:
         for k in state["stored_knowledge"]:
             parts.append(f"- {k['knowledge_text']}")
 
+    # Inject 3-tier memory context (from context management)
+    if state.get("message_history"):
+        parts.append("")
+        parts.append("## 近期对话历史")
+        for msg in state["message_history"]:
+            if isinstance(msg, str):
+                parts.append(msg)
+            elif isinstance(msg, dict):
+                role = "用户" if msg.get("role") == "user" else "助手"
+                content = msg.get("content", "")
+                parts.append(f"{role}: {content}")
+
+    if state.get("episodic_memories"):
+        if isinstance(state["episodic_memories"], list) and state["episodic_memories"]:
+            parts.append("")
+            parts.append("## 历史相关记忆")
+            parts.extend(state["episodic_memories"] if all(isinstance(m, str) for m in state["episodic_memories"]) else [str(m) for m in state["episodic_memories"]])
+
     return "\n".join(parts)
 
 
