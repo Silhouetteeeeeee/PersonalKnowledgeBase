@@ -7,6 +7,7 @@ from langchain.agents import create_agent as create_react_agent
 
 from agent.state import AgentState
 from agent.utils.llm import LLM
+from agent.utils.agent_utils import build_context_block
 from agent.tools.web_search import search_web_from_baidu
 
 logger = logging.getLogger(__name__)
@@ -17,10 +18,7 @@ MAX_AGENT_STEPS = 5
 
 class ClassifyOutput(BaseModel):
     reasoning_trace: str = Field(
-        description="Step-by-step reasoning: why this category, why this confidence level, what knowledge was considered"
-    )
-    category: str = Field(
-        description="Category hierarchy, e.g. 'programming/python' or 'life/health'"
+        description="Step-by-step reasoning: why this confidence level, what knowledge was considered"
     )
     answer: str = Field(description="Answer to the question")
     confidence: float = Field(
@@ -37,13 +35,6 @@ def _build_system_prompt(state: dict) -> str:
     parts = [
         "你是一个专业的智能问答助手。分析问题并生成准确、有用的回答。",
         "",
-        "## 分类指南",
-        "- programming: 编程、软件开发、算法等技术问题",
-        "- life: 日常生活、健康、饮食等非技术问题",
-        "- education: 学术、学习、考试等教育相关问题",
-        "- 使用更细粒度的子分类，如 'programming/python'、'life/health'",
-        "- 不要使用 personal 分类（个人信息由系统独立管理）",
-        "",
         "## 网络搜索",
         "- 仅在完全不知道答案或需要最新信息时搜索",
         "- 最多搜索 1 次，搜索失败则用已有知识回答",
@@ -53,55 +44,11 @@ def _build_system_prompt(state: dict) -> str:
         "- 问候、闲聊、个人观点不需要存储（needs_store=false）",
     ]
 
-    # Inject user profile for personalization
-    profile = state.get("user_profile", {})
-    if profile and any(v for v in profile.values() if v):
-        profile_summary = _summarize_profile(profile)
-        parts.append("")
-        parts.append(f"## 用户画像\n{profile_summary}")
-
-    # Inject relevant stored knowledge
-    if state.get("stored_knowledge"):
-        parts.append("")
-        parts.append("## 相关知识")
-        for k in state["stored_knowledge"]:
-            parts.append(f"- {k['knowledge_text']}")
-
-    # Inject 3-tier memory context (from context management)
-    if state.get("message_history"):
-        parts.append("")
-        parts.append("## 近期对话历史")
-        for msg in state["message_history"]:
-            if isinstance(msg, str):
-                parts.append(msg)
-            elif isinstance(msg, dict):
-                role = "用户" if msg.get("role") == "user" else "助手"
-                content = msg.get("content", "")
-                parts.append(f"{role}: {content}")
-
-    if state.get("episodic_memories"):
-        if isinstance(state["episodic_memories"], list) and state["episodic_memories"]:
-            parts.append("")
-            parts.append("## 历史相关记忆")
-            parts.extend(state["episodic_memories"] if all(isinstance(m, str) for m in state["episodic_memories"]) else [str(m) for m in state["episodic_memories"]])
+    context = build_context_block(state)
+    if context:
+        parts.append(context)
 
     return "\n".join(parts)
-
-
-def _summarize_profile(profile: dict) -> str:
-    """Flatten profile dict into a readable summary string."""
-    lines = []
-    for section, data in profile.items():
-        if section == "updated_at" or not data:
-            continue
-        if isinstance(data, dict):
-            for k, v in data.items():
-                if v:
-                    lines.append(f"- {section}.{k}: {v}")
-        elif isinstance(data, list):
-            if data:
-                lines.append(f"- {section}: {', '.join(str(x) for x in data)}")
-    return "\n".join(lines) if lines else "（暂无用户画像信息）"
 
 
 def _fallback_answer(state: dict) -> dict:
@@ -117,19 +64,17 @@ def _fallback_answer(state: dict) -> dict:
     except Exception as e:
         logger.error("Fallback generation also failed: %s", e)
         return {
-            "answer": "",
-            "category": "unknown",
-            "confidence": 0.0,
-            "needs_store": False,
-            "logic_chain": [{
-                "node": "classify_and_answer",
-                "action": "生成答案失败",
-                "reasoning": f"Agent and fallback both failed: {e}",
-            }],
-        }
+                "answer": "",
+                "confidence": 0.0,
+                "needs_store": False,
+                "logic_chain": [{
+                    "node": "classify_and_answer",
+                    "action": "生成答案失败",
+                    "reasoning": f"Agent and fallback both failed: {e}",
+                }],
+            }
 
     return {
-        "category": result.category,
         "answer": result.answer,
         "confidence": result.confidence * 0.8,
         "needs_store": result.needs_store,
@@ -137,7 +82,6 @@ def _fallback_answer(state: dict) -> dict:
             "node": "classify_and_answer",
             "action": "网络搜索超时，基于知识直接回答",
             "reasoning": result.reasoning_trace,
-            "category": result.category,
             "confidence": result.confidence * 0.8,
             "needs_store": result.needs_store,
             "search_performed": False,
@@ -182,13 +126,12 @@ def classify_and_answer(state: dict) -> dict:
     )
 
     logger.info(
-        "Classified as category='%s' confidence=%.2f needs_store=%s",
-        structured.category, structured.confidence, structured.needs_store,
+        "Classified with confidence=%.2f needs_store=%s",
+        structured.confidence, structured.needs_store,
     )
     logger.info("Answer: %s", structured.answer[:80])
 
     return {
-        "category": structured.category,
         "answer": structured.answer,
         "confidence": structured.confidence,
         "needs_store": structured.needs_store,
@@ -196,7 +139,6 @@ def classify_and_answer(state: dict) -> dict:
             "node": "classify_and_answer",
             "action": "搜索后生成答案" if search_performed else "生成初始答案",
             "reasoning": structured.reasoning_trace,
-            "category": structured.category,
             "confidence": structured.confidence,
             "needs_store": structured.needs_store,
             "search_performed": search_performed,

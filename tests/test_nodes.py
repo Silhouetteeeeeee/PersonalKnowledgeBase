@@ -107,7 +107,6 @@ def test_classify_and_answer():
         "user_message": "What is Redis?",
         "stored_knowledge": [],
     })
-    assert "category" in result
     assert "answer" in result
     assert 0 <= result["confidence"] <= 1
     assert isinstance(result["needs_store"], bool)
