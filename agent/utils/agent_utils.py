@@ -3,6 +3,61 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def build_context_block(state: dict) -> str:
+    """Build shared context block: user profile, stored knowledge,
+    message history, episodic memories. Returns empty string if none available."""
+    parts = []
+
+    profile = state.get("user_profile", {})
+    if profile and any(v for v in profile.values() if v):
+        profile_summary = _summarize_profile(profile)
+        parts.append("")
+        parts.append("## 用户画像")
+        parts.append(profile_summary)
+
+    if state.get("stored_knowledge"):
+        parts.append("")
+        parts.append("## 相关知识")
+        for k in state["stored_knowledge"]:
+            parts.append(f"- {k['knowledge_text']}")
+
+    if state.get("message_history"):
+        parts.append("")
+        parts.append("## 近期对话历史")
+        for msg in state["message_history"]:
+            if isinstance(msg, str):
+                parts.append(msg)
+            elif isinstance(msg, dict):
+                role = "用户" if msg.get("role") == "user" else "助手"
+                content = msg.get("content", "")
+                parts.append(f"{role}: {content}")
+
+    if state.get("episodic_memories"):
+        if isinstance(state["episodic_memories"], list) and state["episodic_memories"]:
+            parts.append("")
+            parts.append("## 历史相关记忆")
+            parts.extend(state["episodic_memories"] if all(isinstance(m, str) for m in state["episodic_memories"]) else [str(m) for m in state["episodic_memories"]])
+
+    return "\n".join(parts)
+
+
+def _summarize_profile(profile: dict) -> str:
+    """Flatten profile dict into a readable summary string."""
+    lines = []
+    for section, data in profile.items():
+        if section == "updated_at" or not data:
+            continue
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if v:
+                    lines.append(f"- {section}.{k}: {v}")
+        elif isinstance(data, list):
+            if data:
+                lines.append(f"- {section}: {', '.join(str(x) for x in data)}")
+    return "\n".join(lines) if lines else "（暂无用户画像信息）"
+
+
 def get_language_instruction() -> str:
     """Return a prompt instruction for the configured output language.
 
