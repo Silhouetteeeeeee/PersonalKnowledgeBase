@@ -7,16 +7,16 @@ from agent.utils.llm import LLM
 logger = logging.getLogger(__name__)
 
 REWRITE_PROMPT = (
-    "你是一个查询改写助手。根据对话历史，将用户的最新问题改写为一个"
-    "不需要上下文就能理解的独立问题。\n\n"
-    "要求：\n"
-    "- 补全指代（如"它"→"Python dict"、"区别呢"→"A和B的区别"）\n"
-    "- 补全省略的部分\n"
-    "- 不要添加不存在的信息\n"
-    "- 如果问题已经是独立的，保持原文\n"
-    "- 只输出改写后的文本，不要任何解释\n\n"
-    "对话历史：\n{history}\n\n"
-    "用户最新消息：{message}"
+    '你是一个查询改写助手。根据对话历史，将用户的最新问题改写为一个'
+    '不需要上下文就能理解的独立问题。\n\n'
+    '要求：\n'
+    '- 补全指代（如"它"→"Python dict"、"区别呢"→"A和B的区别"）\n'
+    '- 补全省略的部分\n'
+    '- 不要添加不存在的信息\n'
+    '- 如果问题已经是独立的，保持原文\n'
+    '- 只输出改写后的文本，不要任何解释\n\n'
+    '对话历史：\n{history}\n\n'
+    '用户最新消息：{message}'
 )
 
 
@@ -28,7 +28,11 @@ def rewrite_query(state: dict) -> dict:
     - LLM call fails or returns empty
     """
     user_message = state["user_message"]
-    session_id = int(state["session_id"])
+    session_id_raw = state.get("session_id")
+    if session_id_raw is None:
+        logger.debug("Skipping rewrite: no session_id in state")
+        return {"search_query": user_message}
+    session_id = int(session_id_raw)
 
     history = MessageHistory.get_recent(session_id)
     if len(history) < 2:

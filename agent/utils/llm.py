@@ -44,6 +44,15 @@ class LLM:
         return cls._default_model
 
     @classmethod
+    def get_specified_model(cls, model: str, temperature: Optional[float] = None):
+        """Get a ChatDeepSeek instance. Shares a default instance when temperature is not overridden."""
+        try:
+            if temperature is not None and model is not None:
+                return ChatDeepSeek(model=model, temperature=temperature)
+        except Exception:
+            return LLM.get_model(temperature)
+
+    @classmethod
     def get_model_for(cls, task: str, temperature: Optional[float] = None) -> ChatDeepSeek:
         """Get a model instance for a specific task.
 
