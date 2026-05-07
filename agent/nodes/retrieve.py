@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 
 def retrieve(state: dict) -> dict:
-    query = state["user_message"]
+    query = state.get("search_query") or state["user_message"]
     logger.info("Retrieving knowledge for: '%s'", query[:40])
 
     # Step 1: Vector search (recall) — expand limit for reranker candidates
