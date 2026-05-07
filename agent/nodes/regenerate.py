@@ -2,6 +2,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
+from agent.utils.agent_utils import build_context_block
 from agent.utils.llm import LLM
 
 logger = logging.getLogger(__name__)
@@ -29,11 +30,15 @@ def regenerate(state: dict) -> dict:
         }
 
     logger.info("Regenerating answer with %d search results", len(state.get("search_results", [])))
+
+    context = build_context_block(state)
+
     prompt = (
-        f"Web search results:\n{search_text}\n\n"
-        f"Question: {state['user_message']}\n\n"
-        f"Original answer: {state.get('answer', '')}\n\n"
-        f"Please provide an accurate answer based on the web search results."
+        f"{context}\n\n"
+        f"## 网络搜索结果\n{search_text}\n\n"
+        f"## 用户问题\n{state['user_message']}\n\n"
+        f"## 原答案\n{state.get('answer', '')}\n\n"
+        f"请基于搜索结果的真实信息，结合上述背景，生成一个准确且风格一致的答案。"
     )
     result = LLM.generate_structured(prompt, RegenerateOutput, use_language=False)
 
