@@ -4,6 +4,7 @@ from langgraph.graph import StateGraph
 from agent.state import AgentState
 from agent.nodes.parse import parse
 from agent.nodes.retrieve import retrieve
+from agent.nodes.rewrite_query import rewrite_query
 from agent.nodes.classify_and_answer import classify_and_answer
 from agent.nodes.fact_check import fact_check
 from agent.nodes.search_web import search_web_node
@@ -64,7 +65,7 @@ def post_error_router(state: dict) -> str:
 def build_graph() -> StateGraph:
     """
         入口: parse - 解析用户输入
-        顺序执行: parse → retrieve → classify_and_answer
+        顺序执行: parse → rewrite_query → retrieve → classify_and_answer
         classify_and_answer 后直接到 fact_check（搜索在节点内部完成）
         fact_check 后如果发现矛盾 → reflect → 修正循环
         否则 → store → respond
@@ -75,6 +76,7 @@ def build_graph() -> StateGraph:
 
     # Core nodes
     builder.add_node("parse", parse)
+    builder.add_node("rewrite_query", rewrite_query)
     builder.add_node("retrieve", retrieve)
     builder.add_node("classify_and_answer", classify_and_answer)
     builder.add_node("fact_check", fact_check)
@@ -91,8 +93,9 @@ def build_graph() -> StateGraph:
 
     builder.set_entry_point("parse")
 
-    # parse → retrieve → classify_and_answer
-    builder.add_edge("parse", "retrieve")
+    # parse → rewrite_query → retrieve → classify_and_answer
+    builder.add_edge("parse", "rewrite_query")
+    builder.add_edge("rewrite_query", "retrieve")
     builder.add_edge("retrieve", "classify_and_answer")
 
     # classify_and_answer → [update_profile, fact_check] (parallel fan-out)
@@ -135,7 +138,7 @@ def build_graph() -> StateGraph:
     compiled = builder.compile()
 
     logger.info(
-        "Graph built: parse → retrieve → classify_and_answer → "
+        "Graph built: parse → rewrite_query → retrieve → classify_and_answer → "
         "fact_check → "
         "[reflect→correct_knowledge/record_error|store] → respond"
     )
