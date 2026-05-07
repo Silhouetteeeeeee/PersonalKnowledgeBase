@@ -55,7 +55,7 @@ class ClaudeCodeBridge:
         if not _check_claude():
             return "❌ 未检测到 Claude Code，请先安装：npm install -g @anthropic-ai/claude-code"
 
-        cmd = ["claude", "--print", message]
+        cmd = [r"C:\Program Files\nodejs\claude.cmd", "--print", message, "--resume", "remote-cli"]
         if self._has_conversation:
             cmd.append("--continue")
 
@@ -64,7 +64,7 @@ class ClaudeCodeBridge:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=1800,
             )
             self._has_conversation = True
             output = r.stdout.strip()
@@ -76,7 +76,7 @@ class ClaudeCodeBridge:
             return "\n\n---\n\n".join(parts) if len(parts) > 1 else parts[0]
 
         except subprocess.TimeoutExpired:
-            return "⚠️ 命令执行超时（120s），请简化问题或重试"
+            return "⚠️ 命令执行超时（1800），请简化问题或重试"
         except FileNotFoundError:
             return "❌ claude 命令未找到，请确认已安装 Claude Code"
         except Exception as e:
