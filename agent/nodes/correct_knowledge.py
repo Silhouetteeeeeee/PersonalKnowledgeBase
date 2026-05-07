@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 def correct_knowledge(state: dict) -> dict:
     knowledge_ids = state.get("contradiction_knowledge_ids", [])
     correction = state.get("reflection_correction", "")
-    category = state.get("category", "uncategorized")
     user_message = state.get("user_message", "")
     correction_attempts = state.get("correction_attempts", 0)
 
@@ -28,7 +27,7 @@ def correct_knowledge(state: dict) -> dict:
         ids = save_knowledge_points_bulk_with_embeddings([{
             "knowledge_text": correction,
             "source_question": f"[auto-corrected] {user_message}",
-            "category": category,
+            "category": "uncategorized",
             "tags": ["auto-corrected"],
             "status": "active",
         }])

@@ -10,7 +10,6 @@ def record_error(state: dict) -> dict:
     user_message = state.get("user_message", "")
     wrong_answer = state.get("answer", "")
     correct_answer = state.get("reflection_correction", "")
-    category = state.get("category", "")
     contradiction_details = state.get("contradiction_details", "")
 
     logger.info("Recording error for: '%s'", user_message[:50])
@@ -19,7 +18,6 @@ def record_error(state: dict) -> dict:
         "user_message": user_message,
         "wrong_answer": wrong_answer,
         "correct_answer": correct_answer,
-        "category": category,
         "contradiction_details": contradiction_details,
         "error_type": "hallucination_or_error",
     }

@@ -299,7 +299,6 @@ def test_correct_knowledge():
     result = correct_knowledge({
         "contradiction_knowledge_ids": [kid],
         "reflection_correction": "New correct fact",
-        "category": "test",
         "user_message": "test question",
         "correction_attempts": 0,
     })
@@ -316,7 +315,6 @@ def test_correct_knowledge_increments_counter():
     result = correct_knowledge({
         "contradiction_knowledge_ids": [],
         "reflection_correction": "",
-        "category": "test",
         "user_message": "test",
         "correction_attempts": 1,
     })
@@ -331,7 +329,6 @@ def test_record_error():
         "user_message": "What is X?",
         "answer": "Wrong answer about X",
         "reflection_correction": "Correct answer about X",
-        "category": "test",
         "contradiction_details": "X is Y, not Z",
         "correction_attempts": 0,
     })
