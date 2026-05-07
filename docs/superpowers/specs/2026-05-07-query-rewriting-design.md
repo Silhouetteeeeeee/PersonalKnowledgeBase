@@ -39,12 +39,10 @@ digraph flow {
 |---|---|---|
 | 向量检索（knowledge_points） | `search_query` | retrieve 节点 |
 | 错误记录检索 | `search_query` | error_records 检索 |
-| Episode 记忆检索 | `user_message`（本次暂不改） | ContextBuilder 在 graph 外执行，留待后续 |
+| Episode 记忆检索 | `user_message` | Episodic 存储的是独立对话摘要，上下文依赖影响很小 |
 | Agent 回答 | `user_message` | classify_and_answer 节点 |
 | 知识存储 | `user_message` | store 节点 |
 | 对话历史记录 | `user_message` | message_history.add_message |
-
-> **关于 episodic memory**：`context_builder.build()` 在 `bot.py` 中早于 `graph.invoke()` 执行，此时重写尚未发生。要统一覆盖需要将 episodic 搜索移入 graph 或调整 bot.py 流程，这一层影响小（episodic 使用独立 embedding 模型），本次先保留原样，后续可独立迭代。
 
 ## 变更清单
 
@@ -143,8 +141,6 @@ TASK_MODEL_MAP: dict[str, str] = {
 
 ## 不需要改的
 
-- `memory/episodic.py` — 本次保持原样，后续可独立迭代
-- `memory/context_builder.py` — 本次保持原样
 - `classify_and_answer` 节点 — 仍用 `user_message`
 - `store` 节点 — 仍用 `user_message`
 - `parse` 节点 — 不变
