@@ -382,3 +382,32 @@ def test_reranker_model():
     scores = reranker.predict([("What is Python?", "Python is a programming language")])
     assert len(scores) == 1
     assert isinstance(float(scores[0]), float)
+
+
+def test_retrieve_uses_search_query(temp_db):
+    """retrieve should prefer search_query over user_message."""
+    from storage.models import save_knowledge_point
+    from agent.nodes.retrieve import retrieve
+
+    save_knowledge_point("Python dict is a key-value store", "What is Python dict?", "programming/python", ["python"])
+
+    result = retrieve({
+        "user_message": "Java Map and its differences",
+        "search_query": "Python dict differences",
+    })
+    assert len(result["stored_knowledge"]) >= 1
+    assert "Python" in result["stored_knowledge"][0]["knowledge_text"]
+
+
+def test_retrieve_falls_back_to_user_message(temp_db):
+    """retrieve should fall back to user_message when search_query is missing."""
+    from storage.models import save_knowledge_point
+    from agent.nodes.retrieve import retrieve
+
+    save_knowledge_point("Java Map is a collection interface", "What is Java Map?", "programming/java", ["java"])
+
+    result = retrieve({
+        "user_message": "Tell me about Java Map",
+    })
+    assert len(result["stored_knowledge"]) >= 1
+    assert "Java" in result["stored_knowledge"][0]["knowledge_text"]
