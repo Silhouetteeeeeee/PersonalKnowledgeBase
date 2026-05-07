@@ -44,6 +44,20 @@ class LLM:
         return cls._default_model
 
     @classmethod
+    def get_model_for(cls, task: str, temperature: Optional[float] = None) -> ChatDeepSeek:
+        """Get a model instance for a specific task.
+
+        Uses TASK_MODEL_MAP to select the model. Unregistered tasks fall back to LLM_MODEL.
+        """
+        from server.config import TASK_MODEL_MAP
+        model_name = TASK_MODEL_MAP.get(task, LLM_MODEL)
+        if temperature is not None:
+            return ChatDeepSeek(model=model_name, temperature=temperature)
+        if cls._default_model is None:
+            cls._default_model = ChatDeepSeek(model=model_name, temperature=LLM_TEMPERATURE)
+        return cls._default_model
+
+    @classmethod
     def generate(cls, prompt: str, use_language: bool = True) -> str:
         """Generate text. Language instruction auto-appended unless use_language=False."""
         if use_language:
