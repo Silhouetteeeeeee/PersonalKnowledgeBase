@@ -7,7 +7,6 @@ class AgentState(TypedDict):
     user_message: str
     user_id: str
     timestamp: str
-    category: str
     confidence: float
     needs_store: bool
     search_results: list[str]
