@@ -5,6 +5,7 @@ import operator
 
 class AgentState(TypedDict):
     user_message: str
+    search_query: str  # LLM-rewritten standalone query for retrieval
     user_id: str
     timestamp: str
     confidence: float
