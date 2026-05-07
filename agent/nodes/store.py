@@ -128,7 +128,6 @@ def store(state: dict) -> dict:
     ids = save_knowledge_points_bulk_with_embeddings(knowledge_points)
 
     return {
-        "category": result.category,
         "stored_knowledge_ids": ids,
         "logic_chain": [{
             "node": "store",

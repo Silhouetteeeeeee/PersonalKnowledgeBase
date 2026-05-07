@@ -175,8 +175,7 @@ def test_store_distills_knowledge():
         "user_message": "What is Redis persistence?",
         "answer": "Redis supports RDB snapshots and AOF logs for persistence.",
     })
-    assert "category" in result
-    assert isinstance(result["category"], str)
+    assert isinstance(result.get("stored_knowledge_ids"), list)
 
 
 def test_fact_check_no_answer():
@@ -284,7 +283,7 @@ def test_store_returns_stored_ids():
         "answer": "Redis is an in-memory data store.",
     })
     if result:  # May be empty if dedup skips everything
-        assert isinstance(result.get("category"), str)
+        assert isinstance(result.get("stored_knowledge_ids"), list)
 
 
 def test_correct_knowledge():

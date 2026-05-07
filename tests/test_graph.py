@@ -33,7 +33,6 @@ def test_graph_short_circuit():
     print(result)
     assert result["final_response"]
     assert len(result["final_response"]) > 0
-    assert "category" in result
 
 
 def test_graph_with_no_answer():

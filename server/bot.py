@@ -87,7 +87,6 @@ class KnowledgeBot:
                     "episodic_memories": context.get("episodic_section", ""),
                     "user_profile": load_profile(user_id),
                     "timestamp": "",
-                    "category": "",
                     "confidence": 0.0,
                     "needs_store": False,
                     "search_results": [],
@@ -124,7 +123,7 @@ class KnowledgeBot:
                 # ── 异步持久化（不阻塞回复）──
                 answer_text = result.get("final_response", "")
                 asyncio.create_task(self._save_turn(
-                    session["id"], user_id, content, answer_text, result.get("category", ""),
+                    session["id"], user_id, content, answer_text,
                 ))
             except Exception:
                 logger.exception("Error handling message from %s", user_id)
@@ -186,11 +185,11 @@ class KnowledgeBot:
         except Exception:
             logger.exception("Error processing file upload from %s", user_id)
 
-    async def _save_turn(self, session_id: int, user_id: str, user_msg: str, asst_msg: str, category: str):
+    async def _save_turn(self, session_id: int, user_id: str, user_msg: str, asst_msg: str):
         """Persist conversation turn asynchronously (non-blocking)."""
         try:
-            await asyncio.to_thread(message_history.add_message, session_id, user_id, "user", user_msg, category)
-            await asyncio.to_thread(message_history.add_message, session_id, user_id, "assistant", asst_msg, category)
+            await asyncio.to_thread(message_history.add_message, session_id, user_id, "user", user_msg)
+            await asyncio.to_thread(message_history.add_message, session_id, user_id, "assistant", asst_msg)
             await asyncio.to_thread(episodic_memory.summarize_and_embed, session_id, user_id)
         except Exception as e:
             logger.warning("Async memory persistence failed: %s", e)
