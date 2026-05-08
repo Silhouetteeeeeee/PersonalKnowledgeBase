@@ -111,9 +111,9 @@ def classify_and_answer(state: dict) -> dict:
     agent.recursion_limit = MAX_AGENT_STEPS
 
     try:
-        state["search_time"] = 0
         result = agent.invoke({
             "messages": [("user", state["user_message"])],
+            "search_time": 0,
         })
         structured = result.get("structured_response")
     except Exception as e:
