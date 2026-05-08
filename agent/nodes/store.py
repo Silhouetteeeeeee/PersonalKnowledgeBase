@@ -14,6 +14,7 @@ from storage.models import (
 
 logger = logging.getLogger(__name__)
 
+
 class DistilledPoint(BaseModel):
     knowledge_text: str = Field(
         description="A concise, standalone knowledge point distilled from the Q&A"
@@ -34,6 +35,30 @@ class DistillOutput(BaseModel):
         description="Knowledge points distilled from the Q&A"
     )
 
+
+_BASE_DISTILL_PROMPT = (
+    "## Role\n"
+    "You are a knowledge classification expert. Categorize the following Q&A with precise hierarchical paths.\n\n"
+    "## Fixed Top-Level Categories\n"
+    "programming, mathematics, physics, chemistry, biology, history, literature, art, philosophy, "
+    "economics, law, medicine, education, career, life, sports, other\n\n"
+    "## Rules\n"
+    "1. Path format: level1/level2/level3/level4 (lowercase English, no spaces)\n"
+    "2. Deeper content = deeper path (e.g. 'programming/python/web/django')\n"
+    "3. Pick the closest fixed top-level, then freely extend sub-levels\n"
+    "4. Terms must be standard lowercase English, no mixed-language\n"
+    "5. Multiple core topics use & separator (e.g. 'programming&mathematics')\n"
+    "6. Unclassifiable -> 'other'\n\n"
+    "## Examples\n"
+    "- What is Python -> programming/python\n"
+    "- Django routing -> programming/python/web/django\n"
+    "- Hello -> other\n\n"
+    "## Per-Knowledge-Point Categories\n"
+    "Each distilled knowledge point may have its own category, "
+    "which can be more specific than the overall Q&A category."
+)
+
+
 def _check_duplicate(kp) -> tuple:
     """检查知识点是否重复，返回 (kp, is_duplicate)"""
     try:
@@ -46,6 +71,58 @@ def _check_duplicate(kp) -> tuple:
         logger.warning("Dedup embedding failed for '%s': %s, saving without dedup",
                       kp.knowledge_text[:30], e)
     return kp, False
+
+
+def _distill_and_save(prompt: str, source_question: str, reasoning_log_path: str = "") -> dict:
+    """Full pipeline: LLM distill → category normalize → dedup → save.
+
+    Returns {"stored_knowledge_ids": list[int], "category": str} or empty dict if nothing saved.
+    """
+    existing_cats = get_normalized_categories()
+    if existing_cats:
+        prompt += (
+            f"\n\n已有分类：{existing_cats}\n"
+            f"请优先选择最匹配的已有分类，仅当完全不匹配时创建新分类。"
+        )
+
+    result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
+
+    for d in result.knowledge_points:
+        d.category = normalize_category_str(d.category)
+        ensure_category(d.category)
+
+    # Parallel dedup
+    new_points = []
+    with ThreadPoolExecutor(max_workers=16, thread_name_prefix="dedup") as executor:
+        futures = {executor.submit(_check_duplicate, kp): kp
+                   for kp in result.knowledge_points}
+
+        for future in as_completed(futures):
+            kp, is_duplicate = future.result()
+            if not is_duplicate:
+                new_points.append(kp)
+
+    if not new_points:
+        logger.info("All knowledge points already exist, nothing to store")
+        return {}
+
+    knowledge_points = [
+        {
+            "knowledge_text": kp.knowledge_text,
+            "source_question": source_question,
+            "category": kp.category,
+            "tags": kp.tags,
+            "reasoning_log_path": reasoning_log_path,
+        }
+        for kp in new_points
+    ]
+    ids = save_knowledge_points_bulk_with_embeddings(knowledge_points)
+
+    return {
+        "stored_knowledge_ids": ids,
+        "category": result.category,
+    }
+
 
 def store(state: dict) -> dict:
     if not state.get("needs_store", True):
@@ -61,77 +138,27 @@ def store(state: dict) -> dict:
         return {}
 
     logger.info("Distilling knowledge from Q&A...")
-    existing_cats = get_normalized_categories()
     prompt = (
-        "## Role\n"
-        "You are a knowledge classification expert. Categorize the following Q&A with precise hierarchical paths.\n\n"
-        "## Fixed Top-Level Categories\n"
-        "programming, mathematics, physics, chemistry, biology, history, literature, art, philosophy, "
-        "economics, law, medicine, education, career, life, sports, other\n\n"
-        "## Rules\n"
-        "1. Path format: level1/level2/level3/level4 (lowercase English, no spaces)\n"
-        "2. Deeper content = deeper path (e.g. 'programming/python/web/django')\n"
-        "3. Pick the closest fixed top-level, then freely extend sub-levels\n"
-        "4. Terms must be standard lowercase English, no mixed-language\n"
-        "5. Multiple core topics use & separator (e.g. 'programming&mathematics')\n"
-        "6. Unclassifiable -> 'other'\n\n"
-        "## Examples\n"
-        "- What is Python -> programming/python\n"
-        "- Django routing -> programming/python/web/django\n"
-        "- Hello -> other\n\n"
-        "## Per-Knowledge-Point Categories\n"
-        "Each distilled knowledge point may have its own category, "
-        "which can be more specific than the overall Q&A category.\n\n"
+        _BASE_DISTILL_PROMPT + "\n\n"
         f"Question: {state['user_message']}\n"
         f"Answer: {state['answer']}"
     )
-    if existing_cats:
-        prompt += (
-            f"\n\n已有分类：{existing_cats}\n"
-            f"请优先选择最匹配的已有分类，仅当完全不匹配时创建新分类。"
-        )
-    result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
+    reasoning_log_path = state.get("reasoning_log_path", "")
 
-    for d in result.knowledge_points:
-        d.category = normalize_category_str(d.category)
-        ensure_category(d.category)
+    saved = _distill_and_save(
+        prompt=prompt,
+        source_question=state["user_message"],
+        reasoning_log_path=reasoning_log_path,
+    )
 
-    # Dedup: skip knowledge points that are semantically similar to existing ones
-    new_points = []
-    # 并行去重检查
-    with ThreadPoolExecutor(max_workers=16, thread_name_prefix="dedup") as executor:
-        futures = {executor.submit(_check_duplicate, kp): kp
-                   for kp in result.knowledge_points}
-
-        # 收集非重复的知识点
-        new_points = []
-        for future in as_completed(futures):
-            kp, is_duplicate = future.result()
-            if not is_duplicate:
-                new_points.append(kp)
-
-    if not new_points:
-        logger.info("All knowledge points already exist, nothing to store")
+    if not saved:
         return {}
 
-    reasoning_log_path = state.get("reasoning_log_path", "")
-    knowledge_points = [
-        {
-            "knowledge_text": kp.knowledge_text,
-            "source_question": state["user_message"],
-            "category": kp.category,
-            "tags": kp.tags,
-            "reasoning_log_path": reasoning_log_path,
-        }
-        for kp in new_points
-    ]
-    ids = save_knowledge_points_bulk_with_embeddings(knowledge_points)
-
     return {
-        "stored_knowledge_ids": ids,
+        "stored_knowledge_ids": saved["stored_knowledge_ids"],
         "logic_chain": [{
             "node": "store",
-            "action": f"存储 {len(ids)} 条知识点",
-            "reasoning": f"分类: {result.category}, 知识点数: {len(ids)}",
+            "action": f"存储 {len(saved['stored_knowledge_ids'])} 条知识点",
+            "reasoning": f"分类: {saved['category']}, 知识点数: {len(saved['stored_knowledge_ids'])}",
         }],
     }
