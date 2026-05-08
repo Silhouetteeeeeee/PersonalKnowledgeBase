@@ -38,7 +38,14 @@ class DistillOutput(BaseModel):
 
 _BASE_DISTILL_PROMPT = (
     "## Role\n"
-    "You are a knowledge classification expert. Categorize the following content with precise hierarchical paths.\n\n"
+    "You are a knowledge refinement expert. Extract key knowledge points from the content, "
+    "enrich them with explanatory context, and classify them precisely.\n\n"
+    "## 知识提炼要求\n"
+    "1. 每个知识点应该自包含、可独立理解，让读者只看知识点就能学到完整内容\n"
+    "2. 在核心事实基础上，补充原理、机制、上下文等解释性内容\n"
+    "3. 严格保持单一范畴——一个知识点只聚焦一个概念，不要发散到相关但不属于同一主题的内容\n"
+    "4. 不要单纯摘抄原话，要用自己的语言组织、提炼、丰富\n"
+    "5. 保持简洁精准，每条约 50-150 字，不做过度的展开\n\n"
     "## Fixed Top-Level Categories\n"
     "programming, mathematics, physics, chemistry, biology, history, literature, art, philosophy, "
     "economics, law, medicine, education, career, life, sports, other\n\n"
@@ -85,7 +92,7 @@ def _distill_and_save(prompt: str, source_question: str, reasoning_log_path: str
             f"请优先选择最匹配的已有分类，仅当完全不匹配时创建新分类。"
         )
 
-    result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
+    result = LLM.generate_structured(prompt, DistillOutput, use_language=False, model="deepseek-v4-pro")
     if result is None:
         logger.error("LLM.generate_structured returned None")
         return {}
