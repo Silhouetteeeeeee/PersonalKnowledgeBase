@@ -64,7 +64,9 @@ class ClaudeCodeBridge:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=1800,
+                timeout=600,
+                encoding='utf-8',
+                errors='replace'
             )
             self._has_conversation = True
             output = r.stdout.strip()
