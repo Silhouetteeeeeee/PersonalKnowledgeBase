@@ -38,7 +38,7 @@ class DistillOutput(BaseModel):
 
 _BASE_DISTILL_PROMPT = (
     "## Role\n"
-    "You are a knowledge classification expert. Categorize the following Q&A with precise hierarchical paths.\n\n"
+    "You are a knowledge classification expert. Categorize the following content with precise hierarchical paths.\n\n"
     "## Fixed Top-Level Categories\n"
     "programming, mathematics, physics, chemistry, biology, history, literature, art, philosophy, "
     "economics, law, medicine, education, career, life, sports, other\n\n"
