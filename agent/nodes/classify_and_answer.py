@@ -101,7 +101,6 @@ def classify_and_answer(state: dict) -> dict:
         "Classifying question (stored_knowledge=%d)",
         len(state.get("stored_knowledge", [])),
     )
-
     agent = create_react_agent(
         model=LLM.get_model(),
         tools=[web_search_tool],
