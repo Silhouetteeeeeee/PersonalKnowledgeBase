@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class DistilledPoint(BaseModel):
     knowledge_text: str = Field(
-        description="A concise, standalone knowledge point distilled from the Q&A"
+        description="A concise, standalone knowledge point distilled from the input content"
     )
     category: str = Field(
         description="Category for the knowledge point. Each knowledge point has different category."
@@ -32,7 +32,7 @@ class DistillOutput(BaseModel):
                     "Support up to four-tier hierarchical categories (e.g., databases/nosql/redis/commands)"
     )
     knowledge_points: list[DistilledPoint] = Field(
-        description="Knowledge points distilled from the Q&A"
+        description="Knowledge points distilled from the input content"
     )
 
 
