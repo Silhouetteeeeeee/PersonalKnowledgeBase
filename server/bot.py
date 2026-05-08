@@ -214,13 +214,10 @@ def _process_and_store_file(file_bytes: bytes, filename: str, user_id: str) -> s
     from storage.database import DB_DIR
     from storage.file_processor import extract_text_from_file, compute_file_hash
     from storage.models import (
-        save_knowledge_points_bulk_with_embeddings,
-        ensure_category,
         save_file_record,
         get_file_record_by_hash,
     )
-    from agent.utils.llm import LLM
-    from agent.nodes.store import DistillOutput
+    from agent.nodes.store import _BASE_DISTILL_PROMPT, _distill_and_save
 
     file_hash = compute_file_hash(file_bytes)
     ext = os.path.splitext(filename)[1].lower() or ".bin"
@@ -248,33 +245,27 @@ def _process_and_store_file(file_bytes: bytes, filename: str, user_id: str) -> s
 
     logger.info("Extracted %d chars from %s", len(text), filename)
 
-    # LLM 蒸馏为知识点
+    # LLM 蒸馏为知识点（使用与 store 节点相同的提示词基座）
     prompt = (
-        f"请将以下从文件「{filename}」中提取的文字内容提炼为知识点。\n"
+        _BASE_DISTILL_PROMPT + "\n\n"
+        f"请将以下从文件「{filename}」中提取的文字内容提炼为知识点。"
         f"如果内容涉及多个主题，请分多条知识点存储，并为每条添加合适的标签。\n\n"
         f"内容：\n{text}"
     )
-    result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
-    ensure_category(result.category)
+    saved = _distill_and_save(
+        prompt=prompt,
+        source_question=f"[文件] {filename}",
+    )
 
-    # 存储知识点
-    knowledge_points = [
-        {
-            "knowledge_text": kp.knowledge_text,
-            "source_question": f"[文件] {filename}",
-            "category": result.category,
-            "tags": kp.tags,
-        }
-        for kp in result.knowledge_points
-    ]
-    ids = save_knowledge_points_bulk_with_embeddings(knowledge_points)
+    if not saved:
+        return f"未能从文件「{filename}」中提取到知识点。"
 
     # 记录文件处理记录
-    save_file_record(filename, ext, file_hash, text, ids, user_id)
+    save_file_record(filename, ext, file_hash, text, saved["stored_knowledge_ids"], user_id)
 
     reply = (
-        f"已从文件「{filename}」中提取并存储了 {len(ids)} 条知识点\n"
-        f"分类：{result.category}"
+        f"已从文件「{filename}」中提取并存储了 {len(saved['stored_knowledge_ids'])} 条知识点\n"
+        f"分类：{saved['category']}"
     )
-    logger.info("File processed: %s → %d points in '%s'", filename, len(ids), result.category)
+    logger.info("File processed: %s → %d points in '%s'", filename, len(saved['stored_knowledge_ids']), saved['category'])
     return reply
