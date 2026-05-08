@@ -113,7 +113,6 @@ def classify_and_answer(state: dict) -> dict:
     try:
         result = agent.invoke({
             "messages": [("user", state["user_message"])],
-            "search_time": 0,
         })
         structured = result.get("structured_response")
     except Exception as e:
@@ -155,11 +154,12 @@ def classify_and_answer(state: dict) -> dict:
 def web_search_tool(query: str, runtime: ToolRuntime[AgentState]) -> str:
     """Search the web when you lack the information needed to answer. Do NOT search for common knowledge. If search fails, answer from existing knowledge — do NOT retry."""
     state = runtime.state
-    if state['search_time'] > MAX_AGENT_STEPS:
+    search_time = state.get("search_time", 0)
+    if search_time > MAX_AGENT_STEPS:
         return "__EXCEED_SEARCH_LIMIT__ Please answer based on your existing knowledge. Do NOT search again."
-    logger.info(f"Need to search on the web. {state.get('search_time', 0)}st question is {query}")
+    logger.info(f"Need to search on the web. {search_time}st question is {query}")
     results = search_web_from_baidu(query)
-    state['search_time'] = state.get('search_time', 0) + 1
+    state["search_time"] = search_time + 1
     if not results:
         return "__SEARCH_UNAVAILABLE__ Please answer based on your existing knowledge. Do NOT search again."
     return "\n".join(results)
