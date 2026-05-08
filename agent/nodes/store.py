@@ -59,7 +59,7 @@ _BASE_DISTILL_PROMPT = (
 )
 
 
-def _check_duplicate(kp) -> tuple:
+def _check_duplicate(kp: DistilledPoint) -> tuple[DistilledPoint, bool]:
     """检查知识点是否重复，返回 (kp, is_duplicate)"""
     try:
         similar = find_similar_knowledge(kp.knowledge_text, threshold=0.25)
@@ -86,6 +86,9 @@ def _distill_and_save(prompt: str, source_question: str, reasoning_log_path: str
         )
 
     result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
+    if result is None:
+        logger.error("LLM.generate_structured returned None")
+        return {}
 
     for d in result.knowledge_points:
         d.category = normalize_category_str(d.category)
