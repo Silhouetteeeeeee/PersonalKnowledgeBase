@@ -92,7 +92,7 @@ def _distill_and_save(prompt: str, source_question: str, reasoning_log_path: str
             f"请优先选择最匹配的已有分类，仅当完全不匹配时创建新分类。"
         )
 
-    result = LLM.generate_structured(prompt, DistillOutput, use_language=False, model="deepseek-v4-pro")
+    result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
     if result is None:
         logger.error("LLM.generate_structured returned None")
         return {}

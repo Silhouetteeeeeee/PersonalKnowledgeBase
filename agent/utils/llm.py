@@ -44,11 +44,12 @@ class LLM:
         return cls._default_model
 
     @classmethod
-    def get_specified_model(cls, model: str, temperature: Optional[float] = None):
+    def get_specified_model(cls, model: str | None, temperature: Optional[float] = None) -> ChatDeepSeek:
         """Get a ChatDeepSeek instance. Shares a default instance when temperature is not overridden."""
         try:
-            if temperature is not None and model is not None:
+            if model is not None:
                 return ChatDeepSeek(model=model, temperature=temperature)
+            return LLM.get_model(temperature)
         except Exception:
             return LLM.get_model(temperature)
 
@@ -78,13 +79,14 @@ class LLM:
         cls,
         prompt: str,
         output_model: Type[BaseModel],
+        model: str = None,
         use_language: bool = True,
     ):
         """Generate structured output. Language instruction auto-appended unless use_language=False."""
         if use_language:
             prompt += get_language_instruction()
-        model = cls.get_model().with_structured_output(output_model)
-        return with_retry(lambda: model.invoke(prompt))
+        llm_model = cls.get_specified_model(model).with_structured_output(output_model)
+        return with_retry(lambda: llm_model.invoke(prompt))
 
     @classmethod
     def build_chain(cls, system_prompt: str, human_template: str = "{input}"):

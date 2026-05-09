@@ -12,13 +12,14 @@ def search_web(query: str, max_results: int = 5) -> list[str]:
 
 def search_web_from_baidu(query: str) -> list[str]:
     """调用百度的智能搜索API 每日限用100次 更好地支持中文问题，并且回答更加精确
-        api文档：https://cloud.baidu.com/doc/qianfan-api/s/wmjqtqr7w
+        搜索生成api文档：https://cloud.baidu.com/doc/qianfan-api/s/wmjqtqr7w
+        搜索API文档：https://cloud.baidu.com/doc/qianfan-api/s/Wmbq4z7e5
     """
     try:
-        from server.config import BAIDU_AI_SEARCH_API_KEY as api_key
+        from server.config import BAIDU_API_KEY as api_key
         if not api_key:
             return [f"[Search error: api key is None]"]
-        url = "https://qianfan.baidubce.com/v2/ai_search/web_summary"
+        url = "https://qianfan.baidubce.com/v2/ai_search/web_search"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
@@ -30,17 +31,19 @@ def search_web_from_baidu(query: str) -> list[str]:
                     "role": "user"
                 }
             ],
-            "stream": False,
-            "instruction": "如果是技术问题，请你以专业的视角回答这个问题，如果你不了解，请回复你不了解，不要随便回复。"
-                           "如果是生活方面的问题，请你以合乎逻辑的方式回答问题。"
-                           "请以人类和机器都能理解的语言回答问题。",
+            "resource_type_filter": [
+                {
+                    "type": "web", # video image aladdin
+                    "top_k": 5
+                }
+            ],
+            "block_websites": ["https://blog.csdn.net"] # 排除csdn
         }
         response = requests.post(url, json=data, headers=headers)
         response.raise_for_status()
         data = response.json()
-        return [d["message"]["content"] for d in data["choices"]]
+        return data["references"]
     except Exception as e:
         return [f"[Search error: {e}]"]
-
 
 
