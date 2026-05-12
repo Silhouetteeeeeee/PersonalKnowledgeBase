@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import sqlite3
 import threading
 import time
 from typing import Optional
@@ -388,6 +389,159 @@ def get_file_record_by_hash(file_hash: str) -> dict | None:
         )
         row = cur.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# ── Wiki page helpers ──
+
+def _page_row_to_dict(row: sqlite3.Row) -> dict:
+    """Convert a pages table row to a dict with parsed JSON fields."""
+    d = dict(row)
+    if isinstance(d.get("tags"), str):
+        d["tags"] = json.loads(d["tags"])
+    if isinstance(d.get("sources"), str):
+        d["sources"] = json.loads(d["sources"])
+    return d
+
+
+def upsert_page(title: str, file_path: str, tags: list[str],
+                sources: list[str], checksum: str,
+                content: str) -> int:
+    """Insert or update a wiki page record. Returns page id."""
+    conn = get_connection()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM pages WHERE title = ?", (title,)
+        ).fetchone()
+
+        if existing:
+            pid = existing["id"]
+            conn.execute(
+                """UPDATE pages SET file_path=?, tags=?, sources=?,
+                   checksum=?, updated_at=datetime('now')
+                   WHERE id=?""",
+                (file_path, json.dumps(tags), json.dumps(sources),
+                 checksum, pid),
+            )
+            logger.info("Updated page index: '%s' (id=%d)", title, pid)
+        else:
+            cur = conn.execute(
+                """INSERT INTO pages (title, file_path, tags, sources, checksum)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (title, file_path, json.dumps(tags), json.dumps(sources), checksum),
+            )
+            pid = cur.lastrowid
+            logger.info("Created page index: '%s' (id=%d)", title, pid)
+
+        # Update embedding
+        embedding = generate_embedding(content)
+        conn.execute(
+            "INSERT OR REPLACE INTO page_vectors(rowid, embedding) VALUES (?, ?)",
+            (pid, serialize_float32(embedding)),
+        )
+
+        conn.commit()
+        return pid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_page_relations(page_id: int, linked_titles: list[str]) -> None:
+    """Replace page_relations for a given page with fresh [[wikilink]] data."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "DELETE FROM page_relations WHERE source_id = ?", (page_id,)
+        )
+        for link_title in linked_titles:
+            conn.execute(
+                """INSERT INTO page_relations (source_id, target_title)
+                   VALUES (?, ?)""",
+                (page_id, link_title),
+            )
+        conn.commit()
+        logger.info("Updated %d relations for page id=%d", len(linked_titles), page_id)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def find_similar_pages(query: str, threshold: float = 0.6, limit: int = 5) -> list[dict]:
+    """Search wiki pages by semantic similarity. Returns list of page dicts with distance."""
+    embedding = generate_embedding(query)
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT p.*, v.distance
+               FROM (
+                   SELECT rowid, distance
+                   FROM page_vectors
+                   WHERE embedding MATCH ?
+                     AND k = ?
+               ) v
+               JOIN pages p ON p.id = v.rowid
+               WHERE p.status = 'active'
+                 AND v.distance <= ?
+               ORDER BY v.distance""",
+            (serialize_float32(embedding), limit * 4, threshold),
+        ).fetchall()
+        results = [_page_row_to_dict(r) for r in rows][:limit]
+        logger.info("Page semantic search: %d results for '%s'", len(results), query[:30])
+        return results
+    finally:
+        conn.close()
+
+
+def get_related_pages(page_id: int) -> list[dict]:
+    """Get pages linked via page_relations to the given page (bidirectional)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT p.* FROM pages p
+               JOIN page_relations r ON r.target_title = p.title
+               WHERE r.source_id = ? AND p.status = 'active'
+               UNION
+               SELECT p.* FROM pages p
+               JOIN page_relations r ON r.source_id = p.id
+               WHERE r.target_title = (SELECT title FROM pages WHERE id = ?)
+                 AND p.status = 'active'
+               """,
+            (page_id, page_id),
+        ).fetchall()
+        return [_page_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_all_pages_index() -> list[dict]:
+    """Get all active pages for building index.md."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT id, title, tags, sources, updated_at
+               FROM pages WHERE status = 'active'
+               ORDER BY updated_at DESC LIMIT 50"""
+        ).fetchall()
+        return [_page_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_page_by_title(title: str) -> Optional[dict]:
+    """Look up a page by exact title match."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM pages WHERE title = ? AND status = 'active'",
+            (title,),
+        ).fetchone()
+        return _page_row_to_dict(row) if row else None
     finally:
         conn.close()
 
