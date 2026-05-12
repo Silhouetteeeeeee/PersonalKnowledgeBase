@@ -65,6 +65,28 @@ def init_db() -> None:
         CREATE VIRTUAL TABLE IF NOT EXISTS error_vectors USING vec0(
             embedding float[512] distance_metric=cosine
         );
+        -- Wiki pages (index-only, content stored as markdown files)
+        CREATE TABLE IF NOT EXISTS pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL UNIQUE,
+            file_path TEXT NOT NULL,
+            tags TEXT NOT NULL DEFAULT '[]',
+            sources TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'active',
+            checksum TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        );
+        CREATE VIRTUAL TABLE IF NOT EXISTS page_vectors USING vec0(
+            embedding float[512] distance_metric=cosine
+        );
+        CREATE TABLE IF NOT EXISTS page_relations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            target_title TEXT NOT NULL,
+            relation_type TEXT NOT NULL DEFAULT 'wikilink',
+            FOREIGN KEY (source_id) REFERENCES pages(id)
+        );
     """)
     # Schema migration for existing databases
     try:
