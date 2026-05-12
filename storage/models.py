@@ -434,10 +434,14 @@ def upsert_page(title: str, file_path: str, tags: list[str],
             pid = cur.lastrowid
             logger.info("Created page index: '%s' (id=%d)", title, pid)
 
-        # Update embedding
+        # Update embedding: delete existing then insert (INSERT OR REPLACE
+        # is not supported on vec0 virtual tables)
+        conn.execute(
+            "DELETE FROM page_vectors WHERE rowid = ?", (pid,)
+        )
         embedding = generate_embedding(content)
         conn.execute(
-            "INSERT OR REPLACE INTO page_vectors(rowid, embedding) VALUES (?, ?)",
+            "INSERT INTO page_vectors(rowid, embedding) VALUES (?, ?)",
             (pid, serialize_float32(embedding)),
         )
 

@@ -16,27 +16,24 @@ def retrieve(state: dict) -> dict:
     query = state.get("search_query") or state["user_message"]
     logger.info("Wiki retrieval for: '%s'", query[:40])
 
-    # Step 1: Vector search for pages
+    # Step 1: Try wiki page vector search
     try:
         pages = find_similar_pages(query, threshold=0.6, limit=5)
     except Exception as e:
-        logger.warning("Page semantic search failed: %s, falling back to knowledge_points", e)
+        logger.warning("Page semantic search failed: %s", e)
         pages = []
 
-    if not pages:
-        # Fallback: use existing knowledge_points
-        logger.info("No pages found, falling back to knowledge_points retrieval")
-        try:
-            candidates = search_knowledge_points_semantic(query, threshold=0.6, limit=20)
-            if len(candidates) > 3:
-                results = rerank_knowledge(query, candidates, top_k=5)
-            else:
-                results = candidates[:5]
-        except Exception:
-            results = []
-        return {"stored_knowledge": results}
+    if pages:
+        return _retrieve_wiki_pages(pages, query)
 
-    # Step 2: Read full page content from disk
+    # Step 2: Fallback to knowledge_points
+    logger.info("No wiki pages found, falling back to knowledge_points")
+    return _retrieve_knowledge_points(query)
+
+
+def _retrieve_wiki_pages(pages: list[dict], query: str) -> dict:
+    """Read full wiki page content and expand with related pages."""
+    # Read pages from disk
     results = []
     for p in pages:
         file_page = read_page(p["file_path"])
@@ -51,7 +48,7 @@ def retrieve(state: dict) -> dict:
             "distance": p.get("distance", 0),
         })
 
-    # Step 3: Expand with related pages (second pass)
+    # Expand with related pages (second pass)
     related_titles = set()
     for r in results:
         related = get_related_pages(r["page_id"])
@@ -70,9 +67,36 @@ def retrieve(state: dict) -> dict:
                     "title": title,
                     "content": file_page["body"],
                     "tags": file_page["tags"],
-                    "distance": 0,  # relation-expanded, not direct match
+                    "distance": 0,
                 })
 
     logger.info("Retrieved %d wiki pages (including %d relation-expanded)",
                 len(results), len(results) - len(pages))
+    return {"stored_knowledge": results}
+
+
+def _retrieve_knowledge_points(query: str) -> dict:
+    """Fallback: use old knowledge_points semantic search + rerank + keyword."""
+    try:
+        candidates = search_knowledge_points_semantic(query, threshold=0.6, limit=20)
+    except Exception as e:
+        logger.warning("Knowledge point search failed: %s", e)
+        candidates = []
+
+    if len(candidates) > 3:
+        try:
+            results = rerank_knowledge(query, candidates, top_k=5)
+            return {"stored_knowledge": results}
+        except Exception as e:
+            logger.warning("Reranker failed: %s, using vector ordering", e)
+            results = candidates[:5]
+            return {"stored_knowledge": results}
+
+    if candidates:
+        results = candidates[:5]
+        return {"stored_knowledge": results}
+
+    # Keyword search fallback
+    from storage.models import search_knowledge_points
+    results = search_knowledge_points(query, limit=5)
     return {"stored_knowledge": results}
