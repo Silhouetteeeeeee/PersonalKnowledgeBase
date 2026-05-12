@@ -13,6 +13,7 @@ class AgentState(TypedDict):
     search_results: list[str]
     stored_knowledge: list[dict]
     stored_knowledge_ids: list[int]
+    wiki_page_ids: list[int]
     answer: str
     final_response: str
     reasoning_log_path: str

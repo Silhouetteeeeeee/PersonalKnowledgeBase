@@ -1,140 +1,171 @@
+"""Wiki page extraction: two-step CoT (analyze -> generate).
+
+Step 1 (Analyze): LLM reads Q&A + index + SCHEMA, outputs analysis
+  (topics, actions, related pages, contradictions).
+
+Step 2 (Generate): LLM reads analysis + existing pages, outputs wiki page content.
+  System writes to disk, updates SQLite index, rebuilds index.md.
+"""
+
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
 from storage.models import (
-    save_knowledge_points_bulk_with_embeddings,
-    ensure_category,
-    find_similar_knowledge,
-    get_normalized_categories,
-    normalize_category_str,
+    upsert_page,
+    update_page_relations,
+    get_page_by_title,
 )
+from storage.wiki_storage import (
+    ensure_dirs,
+    title_to_filename,
+    read_schema,
+    read_page,
+    write_page,
+    build_frontmatter,
+    extract_wikilinks,
+)
+from storage.wiki_index import rebuild_index, get_index_for_prompt
 
 logger = logging.getLogger(__name__)
 
 
-class DistilledPoint(BaseModel):
-    knowledge_text: str = Field(
-        description="A concise, standalone knowledge point distilled from the input content"
+# ── Pydantic models for Step 1 (Analysis) ──
+
+class AnalysisAction(BaseModel):
+    topic: str = Field(description="Topic extracted from the Q&A")
+    action: str = Field(description="'create' for new page, 'update' for existing")
+    target: str = Field(description="Existing page title to update, or empty string for new")
+
+
+class AnalysisOutput(BaseModel):
+    topics: list[str] = Field(description="Topics covered in this Q&A")
+    actions: list[AnalysisAction] = Field(
+        description="Per-topic actions: create new page or update existing"
     )
-    category: str = Field(
-        description="Category for the knowledge point. Each knowledge point has different category."
-                    "Support up to four-tier hierarchical categories (e.g., databases/nosql/redis/commands)"
+    related_pages: list[str] = Field(
+        description="Titles of existing pages related to this content"
     )
-    tags: list[str] = Field(description="Relevant tags for this knowledge point")
-
-
-class DistillOutput(BaseModel):
-    category: str = Field(
-        description="Category for the knowledge. "
-                    "Support up to four-tier hierarchical categories (e.g., databases/nosql/redis/commands)"
-    )
-    knowledge_points: list[DistilledPoint] = Field(
-        description="Knowledge points distilled from the input content"
+    contradictions: list[str] = Field(
+        description="Contradictions between new content and existing knowledge"
     )
 
 
-_BASE_DISTILL_PROMPT = (
-    "## Role\n"
-    "You are a knowledge refinement expert. Extract key knowledge points from the content, "
-    "enrich them with explanatory context, and classify them precisely.\n\n"
-    "## 知识提炼要求\n"
-    "1. 每个知识点应该自包含、可独立理解，让读者只看知识点就能学到完整内容\n"
-    "2. 在核心事实基础上，补充原理、机制、上下文等解释性内容\n"
-    "3. 严格保持单一范畴——一个知识点只聚焦一个概念，不要发散到相关但不属于同一主题的内容\n"
-    "4. 不要单纯摘抄原话，要用自己的语言组织、提炼、丰富\n"
-    "5. 保持简洁精准，每条约 50-150 字，不做过度的展开\n\n"
-    "## Fixed Top-Level Categories\n"
-    "programming, mathematics, physics, chemistry, biology, history, literature, art, philosophy, "
-    "economics, law, medicine, education, career, life, sports, other\n\n"
-    "## Rules\n"
-    "1. Path format: level1/level2/level3/level4 (lowercase English, no spaces)\n"
-    "2. Deeper content = deeper path (e.g. 'programming/python/web/django')\n"
-    "3. Pick the closest fixed top-level, then freely extend sub-levels\n"
-    "4. Terms must be standard lowercase English, no mixed-language\n"
-    "5. Multiple core topics use & separator (e.g. 'programming&mathematics')\n"
-    "6. Unclassifiable -> 'other'\n\n"
-    "## Examples\n"
-    "- What is Python -> programming/python\n"
-    "- Django routing -> programming/python/web/django\n"
-    "- Hello -> other\n\n"
-    "## Per-Knowledge-Point Categories\n"
-    "Each distilled knowledge point may have its own category, "
-    "which can be more specific than the overall Q&A category."
-)
+# ── Pydantic model for Step 2 (Generation) ──
+
+class WikiPageOutput(BaseModel):
+    title: str = Field(description="Page title")
+    content: str = Field(
+        description="Full page markdown content (body only, no frontmatter)"
+    )
+    tags: list[str] = Field(description="Tags for this page")
+    sources: list[str] = Field(description="Source conversation IDs")
 
 
-def _check_duplicate(kp: DistilledPoint) -> tuple[DistilledPoint, bool]:
-    """检查知识点是否重复，返回 (kp, is_duplicate)"""
-    try:
-        similar = find_similar_knowledge(kp.knowledge_text, threshold=0.25)
-        if similar:
-            logger.info("Skipping duplicate knowledge: '%s' (distance=%.3f)",
-                       kp.knowledge_text[:50], similar[0].get("distance", 0))
-            return kp, True
-    except Exception as e:
-        logger.warning("Dedup embedding failed for '%s': %s, saving without dedup",
-                      kp.knowledge_text[:30], e)
-    return kp, False
+class WikiBatchOutput(BaseModel):
+    pages: list[WikiPageOutput] = Field(
+        description="All wiki pages to create or update (one per topic action)"
+    )
 
 
-def _distill_and_save(prompt: str, source_question: str, reasoning_log_path: str = "") -> dict:
-    """Full pipeline: LLM distill → category normalize → dedup → save.
+# ── Prompt templates ──
 
-    Returns {"stored_knowledge_ids": list[int], "category": str} or empty dict if nothing saved.
-    """
-    existing_cats = get_normalized_categories()
-    if existing_cats:
-        prompt += (
-            f"\n\n已有分类：{existing_cats}\n"
-            f"请优先选择最匹配的已有分类，仅当完全不匹配时创建新分类。"
-        )
+def _build_analysis_prompt(user_message: str, answer: str) -> str:
+    schema_content = read_schema()
+    page_index = get_index_for_prompt()
 
-    result = LLM.generate_structured(prompt, DistillOutput, use_language=False)
-    if result is None:
-        logger.error("LLM.generate_structured returned None")
-        return {}
+    return (
+        f"{schema_content}\n\n"
+        f"## Current Wiki Page Index\n\n"
+        f"{page_index}\n\n"
+        f"## Q&A to Analyze\n\n"
+        f"Question: {user_message}\n"
+        f"Answer: {answer}\n\n"
+        f"## Analysis Requirements\n\n"
+        f"1. Identify all topics covered in this Q&A\n"
+        f"2. For each topic, decide whether to create a new page or update an existing one\n"
+        f"3. List existing pages related to this content\n"
+        f"4. If the new content contradicts existing knowledge, note it\n\n"
+        f"Note: Different topics may need different actions. "
+        f"For example, one Q&A might update an existing 'Django' page "
+        f"while creating a new 'ORM Optimization' page."
+    )
 
-    for d in result.knowledge_points:
-        d.category = normalize_category_str(d.category)
-        ensure_category(d.category)
 
-    # Parallel dedup
-    new_points = []
-    with ThreadPoolExecutor(max_workers=16, thread_name_prefix="dedup") as executor:
-        futures = {executor.submit(_check_duplicate, kp): kp
-                   for kp in result.knowledge_points}
+def _build_generation_prompt(
+    analysis: AnalysisOutput,
+    user_message: str,
+    answer: str,
+    existing_page_contents: list[dict],
+) -> str:
+    schema_content = read_schema()
 
-        for future in as_completed(futures):
-            kp, is_duplicate = future.result()
-            if not is_duplicate:
-                new_points.append(kp)
+    existing_text = ""
+    if existing_page_contents:
+        existing_text = "## Existing Page Content (for update)\n\n"
+        for p in existing_page_contents:
+            existing_text += f"### Page: {p['title']}\n\n"
+            if p.get("file_path"):
+                existing_text += f"Current path: {p['file_path']}\n\n"
+            existing_text += f"{p.get('body', '')}\n\n---\n\n"
 
-    if not new_points:
-        logger.info("All knowledge points already exist, nothing to store")
-        return {}
+    actions_text_lines = []
+    for a in analysis.actions:
+        if a.action == "create":
+            actions_text_lines.append(f"- {a.topic}: Create new page")
+        else:
+            actions_text_lines.append(f'- {a.topic}: Update "{a.target}"')
+    actions_text = "\n".join(actions_text_lines)
 
-    knowledge_points = [
-        {
-            "knowledge_text": kp.knowledge_text,
-            "source_question": source_question,
-            "category": kp.category,
-            "tags": kp.tags,
-            "reasoning_log_path": reasoning_log_path,
-        }
-        for kp in new_points
-    ]
-    ids = save_knowledge_points_bulk_with_embeddings(knowledge_points)
+    return (
+        f"{schema_content}\n\n"
+        f"## Analysis Report\n\n"
+        f"Topics: {', '.join(analysis.topics)}\n"
+        f"Actions:\n{actions_text}\n"
+        f"Related pages: {', '.join(analysis.related_pages) if analysis.related_pages else 'None'}\n"
+        f"Contradictions: {', '.join(analysis.contradictions) if analysis.contradictions else 'None found'}\n\n"
+        f"{existing_text}"
+        f"## Original Q&A\n\n"
+        f"Question: {user_message}\n"
+        f"Answer: {answer}\n\n"
+        f"## Generation Requirements\n\n"
+        f"Based on the analysis above, generate wiki page content:\n"
+        f"1. Content field must contain only the body (NO frontmatter)\n"
+        f"2. Use Chinese for explanations, keep English for technical terms\n"
+        f"3. Cross-reference other pages using [[page title]] syntax\n"
+        f"4. tags should be content labels, not categories\n"
+        f"5. If updating an existing page, output the COMPLETE updated content (not just the diff)"
+    )
 
-    return {
-        "stored_knowledge_ids": ids,
-        "category": result.category,
-    }
+
+def _get_source_id() -> str:
+    """Generate a source conversation ID from timestamp."""
+    return f"conv_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+
+def _read_existing_pages(actions: list[AnalysisAction]) -> list[dict]:
+    """Read full content of pages that need updating."""
+    existing = []
+    for a in actions:
+        if a.action != "update" or not a.target:
+            continue
+        page = get_page_by_title(a.target)
+        if page:
+            file_page = read_page(page["file_path"])
+            if file_page:
+                existing.append({
+                    "title": page["title"],
+                    "file_path": page["file_path"],
+                    "body": file_page["body"],
+                })
+    return existing
 
 
 def store(state: dict) -> dict:
+    """Two-step CoT extraction: analyze -> generate -> write."""
     if not state.get("needs_store", True):
         logger.info("Skipping store: needs_store=False")
         return {}
@@ -147,28 +178,89 @@ def store(state: dict) -> dict:
         logger.info("Skipping store: contradiction detected")
         return {}
 
-    logger.info("Distilling knowledge from Q&A...")
-    prompt = (
-        _BASE_DISTILL_PROMPT + "\n\n"
-        f"Question: {state['user_message']}\n"
-        f"Answer: {state['answer']}"
-    )
-    reasoning_log_path = state.get("reasoning_log_path", "")
+    ensure_dirs()
+    user_msg = state["user_message"]
+    answer = state["answer"]
+    source_id = _get_source_id()
 
-    saved = _distill_and_save(
-        prompt=prompt,
-        source_question=state["user_message"],
-        reasoning_log_path=reasoning_log_path,
-    )
+    # ── Step 1: Analysis ──
+    logger.info("Step 1: Analyzing Q&A for wiki content...")
+    analysis_prompt = _build_analysis_prompt(user_msg, answer)
+    analysis = LLM.generate_structured(analysis_prompt, AnalysisOutput, use_language=False)
+    if analysis is None:
+        logger.error("Analysis LLM returned None")
+        return {}
+    logger.info("Analysis complete: %d topics, %d actions",
+                len(analysis.topics), len(analysis.actions))
 
-    if not saved:
+    # ── Step 2: Generation ──
+    existing_contents = _read_existing_pages(analysis.actions)
+    logger.info("Step 2: Generating wiki page(s)...")
+    gen_prompt = _build_generation_prompt(analysis, user_msg, answer, existing_contents)
+    batch = LLM.generate_structured(gen_prompt, WikiBatchOutput, use_language=False)
+    if batch is None or not batch.pages:
+        logger.error("Generation LLM returned None or empty pages")
         return {}
 
+    # ── Write to filesystem + update SQLite ──
+    now = datetime.now().strftime("%Y-%m-%d")
+    saved_ids = []
+
+    for wp in batch.pages:
+        tags = wp.tags
+        sources = wp.sources
+        if source_id not in sources:
+            sources.append(source_id)
+
+        filename = title_to_filename(wp.title)
+        file_path = os.path.join("wiki", "pages", filename)
+
+        # Check if page already exists -> preserve created date
+        existing_page_data = read_page(file_path)
+        created_str = existing_page_data.get("created", "") if existing_page_data else ""
+
+        # Build final content with frontmatter
+        frontmatter = build_frontmatter(
+            title=wp.title,
+            tags=tags,
+            sources=sources,
+            created=created_str,
+            updated=now,
+        )
+        full_content = frontmatter + "\n\n" + wp.content.strip()
+
+        # Write to file
+        checksum = write_page(file_path, full_content)
+
+        # Update SQLite index
+        pid = upsert_page(
+            title=wp.title,
+            file_path=file_path,
+            tags=tags,
+            sources=sources,
+            checksum=checksum,
+            content=full_content,
+        )
+        saved_ids.append(pid)
+
+        # Extract [[wikilinks]] and update relations
+        links = extract_wikilinks(full_content)
+        if links:
+            update_page_relations(pid, links)
+
+    # ── Rebuild index.md ──
+    rebuild_index()
+    logger.info("Stored %d wiki pages from this Q&A", len(saved_ids))
+
     return {
-        "stored_knowledge_ids": saved["stored_knowledge_ids"],
+        "stored_knowledge_ids": saved_ids,
+        "wiki_page_ids": saved_ids,
         "logic_chain": [{
             "node": "store",
-            "action": f"存储 {len(saved['stored_knowledge_ids'])} 条知识点",
-            "reasoning": f"分类: {saved['category']}, 知识点数: {len(saved['stored_knowledge_ids'])}",
+            "action": f"Wiki: stored {len(saved_ids)} pages",
+            "reasoning": (
+                f"Pages: {[wp.title for wp in batch.pages]}, "
+                f"Actions: {[a.action for a in analysis.actions]}"
+            ),
         }],
     }
