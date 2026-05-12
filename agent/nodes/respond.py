@@ -2,7 +2,6 @@ import logging
 import os
 from datetime import datetime
 
-from storage.models import update_knowledge_reasoning_path
 
 logger = logging.getLogger(__name__)
 
@@ -71,16 +70,6 @@ def _save_reasoning_log(state: dict) -> str:
     return file_path
 
 
-def _update_reasoning_paths(state: dict, log_path: str) -> None:
-    """Update the reasoning_log_path for knowledge points stored in this turn."""
-    stored_ids = state.get("stored_knowledge_ids", [])
-    if stored_ids and log_path:
-        try:
-            update_knowledge_reasoning_path(stored_ids, log_path)
-        except Exception as e:
-            logger.warning("Failed to update reasoning_log_path: %s", e)
-
-
 def respond(state: dict) -> dict:
     answer = state.get("answer", "")
 
@@ -113,10 +102,7 @@ def respond(state: dict) -> dict:
             logger.info("Appended generic contradiction warning (no reflection)")
 
     # Save reasoning log to MD file
-    log_path = _save_reasoning_log(state)
-
-    # Update knowledge points with the reasoning log path
-    _update_reasoning_paths(state, log_path)
+    _save_reasoning_log(state)
 
     logger.info("Responding with answer (len=%d): '%s'", len(answer), answer[:80])
     return {"final_response": answer}

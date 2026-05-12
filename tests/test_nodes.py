@@ -30,74 +30,6 @@ def test_retrieve_no_results():
     assert result["stored_knowledge"] == []
 
 
-def test_retrieve_with_results():
-    from storage.models import save_knowledge_point
-    from agent.nodes.retrieve import retrieve
-
-    save_knowledge_point("Python is a programming language", "What is Python?", "programming/python", ["python"])
-    result = retrieve({"user_message": "Tell me about Python"})
-    assert len(result["stored_knowledge"]) == 1
-    assert "Python" in result["stored_knowledge"][0]["knowledge_text"]
-
-
-def test_retrieve_reranks_when_enough_candidates(monkeypatch):
-    """Verify that retrieve calls reranker when >3 candidates exist."""
-    from agent.nodes.retrieve import retrieve
-
-    fake_candidates = [
-        {"knowledge_text": f"doc {i}", "distance": i * 0.1}
-        for i in range(10)
-    ]
-
-    def mock_semantic(*args, **kwargs):
-        return fake_candidates
-
-    def mock_rerank(query, candidates, top_k):
-        scored = list(reversed(candidates))
-        for doc in scored[:top_k]:
-            doc["relevance_score"] = 1.0
-        return scored[:top_k]
-
-    monkeypatch.setattr("agent.nodes.retrieve.search_knowledge_points_semantic", mock_semantic)
-    monkeypatch.setattr("agent.nodes.retrieve.rerank_knowledge", mock_rerank)
-
-    result = retrieve({"user_message": "test query"})
-    assert len(result["stored_knowledge"]) == 5
-    assert result["stored_knowledge"][0]["knowledge_text"] == "doc 9"
-    assert "relevance_score" in result["stored_knowledge"][0]
-
-
-def test_retrieve_skips_rerank_when_few_candidates(monkeypatch):
-    """Verify that retrieve skips reranker when ≤3 candidates exist."""
-    from agent.nodes.retrieve import retrieve
-
-    fake_candidates = [
-        {"knowledge_text": f"doc {i}", "distance": i * 0.1}
-        for i in range(3)
-    ]
-
-    monkeypatch.setattr("agent.nodes.retrieve.search_knowledge_points_semantic", lambda *a, **kw: fake_candidates)
-    monkeypatch.setattr("agent.nodes.retrieve.rerank_knowledge", lambda *a, **kw: (_ for _ in ()).throw(Exception("should not be called")))
-
-    result = retrieve({"user_message": "test"})
-    assert len(result["stored_knowledge"]) == 3
-
-
-def test_retrieve_fallback_when_reranker_fails(monkeypatch):
-    """Verify that retrieve falls back to vector ordering when reranker fails."""
-    from agent.nodes.retrieve import retrieve
-
-    fake_candidates = [
-        {"knowledge_text": f"doc {i}", "distance": i * 0.1}
-        for i in range(10)
-    ]
-
-    monkeypatch.setattr("agent.nodes.retrieve.search_knowledge_points_semantic", lambda *a, **kw: fake_candidates)
-    monkeypatch.setattr("agent.nodes.retrieve.rerank_knowledge", lambda *a, **kw: (_ for _ in ()).throw(Exception("reranker crash")))
-
-    result = retrieve({"user_message": "test"})
-    assert len(result["stored_knowledge"]) == 5
-    assert result["stored_knowledge"][0]["knowledge_text"] == "doc 0"
 
 
 def test_classify_and_answer():
@@ -286,40 +218,6 @@ def test_store_returns_stored_ids():
         assert isinstance(result.get("stored_knowledge_ids"), list)
 
 
-def test_correct_knowledge():
-    from storage.models import save_knowledge_point, get_knowledge_status
-    from agent.nodes.correct_knowledge import correct_knowledge
-
-    # Save a knowledge point first
-    kid = save_knowledge_point("Old wrong fact", "test question", "test", ["test"])
-    assert get_knowledge_status(kid) == "active"
-
-    # Correct it
-    result = correct_knowledge({
-        "contradiction_knowledge_ids": [kid],
-        "reflection_correction": "New correct fact",
-        "user_message": "test question",
-        "correction_attempts": 0,
-    })
-
-    assert result["knowledge_corrected"] is True
-    assert result["correction_attempts"] == 1
-    # Verify status changed
-    assert get_knowledge_status(kid) == "deprecated"
-
-
-def test_correct_knowledge_increments_counter():
-    from agent.nodes.correct_knowledge import correct_knowledge
-
-    result = correct_knowledge({
-        "contradiction_knowledge_ids": [],
-        "reflection_correction": "",
-        "user_message": "test",
-        "correction_attempts": 1,
-    })
-    assert result["correction_attempts"] == 2
-
-
 def test_record_error():
     from agent.nodes.record_error import record_error
     from storage.database import get_connection
@@ -370,7 +268,6 @@ def test_graph_includes_fact_check():
     # 验证新节点存在
     assert "fact_check" in g.nodes
     assert "reflect" in g.nodes
-    assert "correct_knowledge" in g.nodes
     assert "record_error" in g.nodes
 
 # def test_reranker_model():
@@ -384,30 +281,3 @@ def test_graph_includes_fact_check():
 #     assert isinstance(float(scores[0]), float)
 
 
-def test_retrieve_uses_search_query(temp_db):
-    """retrieve should prefer search_query over user_message."""
-    from storage.models import save_knowledge_point
-    from agent.nodes.retrieve import retrieve
-
-    save_knowledge_point("Python dict is a key-value store", "What is Python dict?", "programming/python", ["python"])
-
-    result = retrieve({
-        "user_message": "Java Map and its differences",
-        "search_query": "Python dict differences",
-    })
-    assert len(result["stored_knowledge"]) >= 1
-    assert "Python" in result["stored_knowledge"][0]["knowledge_text"]
-
-
-def test_retrieve_falls_back_to_user_message(temp_db):
-    """retrieve should fall back to user_message when search_query is missing."""
-    from storage.models import save_knowledge_point
-    from agent.nodes.retrieve import retrieve
-
-    save_knowledge_point("Java Map is a collection interface", "What is Java Map?", "programming/java", ["java"])
-
-    result = retrieve({
-        "user_message": "Tell me about Java Map",
-    })
-    assert len(result["stored_knowledge"]) >= 1
-    assert "Java" in result["stored_knowledge"][0]["knowledge_text"]

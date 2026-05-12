@@ -21,27 +21,6 @@ def get_connection() -> sqlite3.Connection:
 def init_db() -> None:
     conn = get_connection()
     conn.executescript("""
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            parent_id INTEGER REFERENCES categories(id),
-            description TEXT
-        );
-        CREATE TABLE IF NOT EXISTS knowledge_points (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            knowledge_text TEXT NOT NULL,
-            source_question TEXT NOT NULL,
-            category TEXT NOT NULL,
-            tags TEXT NOT NULL DEFAULT '[]',
-            status TEXT NOT NULL DEFAULT 'active',
-            corrected_text TEXT DEFAULT '',
-            reasoning_log_path TEXT DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-        );
-        CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vectors USING vec0(
-            embedding float[512] distance_metric=cosine
-        );
         CREATE TABLE IF NOT EXISTS file_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_name TEXT NOT NULL,
@@ -88,19 +67,6 @@ def init_db() -> None:
             FOREIGN KEY (source_id) REFERENCES pages(id)
         );
     """)
-    # Schema migration for existing databases
-    try:
-        conn.execute("ALTER TABLE knowledge_points ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("ALTER TABLE knowledge_points ADD COLUMN corrected_text TEXT DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("ALTER TABLE knowledge_points ADD COLUMN reasoning_log_path TEXT DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
     conn.commit()
     conn.close()
     from memory.models import init_memory_tables

@@ -3,7 +3,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
-from storage.models import search_knowledge_points_semantic, get_knowledge_status
+from storage.models import find_similar_pages
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,13 @@ class FactCheckOutput(BaseModel):
 
 
 def _search_related(state: dict) -> tuple[list[dict], str]:
-    """Search for active (non-deprecated) knowledge related to the answer."""
+    """Search for active wiki pages related to the answer."""
     answer = state.get("answer", "")
     if not answer:
         return [], ""
 
     try:
-        related = search_knowledge_points_semantic(answer, limit=5)
+        related = find_similar_pages(answer, threshold=0.6, limit=5)
     except Exception as e:
         logger.warning("Semantic search for fact check failed: %s", e)
         return [], ""
@@ -38,18 +38,8 @@ def _search_related(state: dict) -> tuple[list[dict], str]:
     if not related:
         return [], ""
 
-    # Filter out deprecated knowledge
-    active_related = []
-    for k in related:
-        status = get_knowledge_status(k["id"])
-        if status not in ("deprecated",):
-            active_related.append(k)
-
-    if not active_related:
-        return [], ""
-
-    knowledge_text = "\n".join(f"- {k['knowledge_text']}" for k in active_related)
-    return active_related, knowledge_text
+    knowledge_text = "\n".join(f"- {k['title']}: {k.get('content', '(详见页面)')}" for k in related)
+    return related, knowledge_text
 
 
 def fact_check(state: dict) -> dict:
@@ -81,7 +71,7 @@ def fact_check(state: dict) -> dict:
         "contradiction_details": result.explanation if result.has_contradiction else "",
         "contradiction_severity": result.severity,
         "contradiction_knowledge_ids": [k["id"] for k in active_related] if result.has_contradiction else [],
-        "contradiction_knowledge_texts": [k["knowledge_text"] for k in active_related] if result.has_contradiction else [],
+        "contradiction_knowledge_texts": [f"[{k['title']}]({k['file_path']})" for k in active_related] if result.has_contradiction else [],
         "logic_chain": [{
             "node": "fact_check",
             "action": "矛盾检测" if result.has_contradiction else "矛盾检测通过",

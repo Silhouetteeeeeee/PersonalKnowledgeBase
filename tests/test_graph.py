@@ -68,11 +68,25 @@ def test_graph_rewrite_query_edge():
     assert "retrieve" in g.nodes
 
 
-def test_graph_search_query_flows_to_retrieve(monkeypatch):
+def test_graph_search_query_flows_to_retrieve(monkeypatch, tmp_path):
     """search_query from rewrite_query should be used by retrieve."""
-    from storage.models import save_knowledge_point
+    from storage.models import upsert_page
+    from storage.wiki_storage import WIKI_DIR, write_page
 
-    save_knowledge_point("Python dict is a key-value store", "What is Python dict?", "programming/python", ["python"])
+    monkeypatch.setattr("storage.wiki_storage.WIKI_DIR", str(tmp_path / "wiki"))
+
+    file_path = "pages/python-dict.md"
+
+    upsert_page(
+        title="Python dict",
+        file_path=file_path,
+        tags=["python", "dict"],
+        sources=["test"],
+        checksum="abc",
+        content="Python dict is a key-value store",
+    )
+    # Write content to disk (retrieve reads from filesystem)
+    write_page(file_path, "---\ntitle: Python dict\ntags: [python, dict]\n---\n\nPython dict is a key-value store")
 
     monkeypatch.setattr(
         "agent.nodes.rewrite_query.MessageHistory.get_recent",
@@ -104,4 +118,5 @@ def test_graph_search_query_flows_to_retrieve(monkeypatch):
 
     stored = result.get("stored_knowledge", [])
     assert len(stored) >= 1
-    assert "Python" in stored[0]["knowledge_text"]
+    assert stored[0]["type"] == "wiki_page"
+    assert stored[0]["title"] == "Python dict"

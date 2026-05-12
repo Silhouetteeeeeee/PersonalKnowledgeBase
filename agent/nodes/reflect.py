@@ -1,10 +1,9 @@
 import logging
-import os
 
 from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
-from storage.models import query_knowledge_reasoning_path, search_error_records_semantic
+from storage.models import search_error_records_semantic
 
 logger = logging.getLogger(__name__)
 
@@ -25,24 +24,6 @@ class ReflectionOutput(BaseModel):
     )
 
 
-def _read_reasoning_trace(knowledge_ids: list[int]) -> str:
-    """Read the original reasoning trace MD files for the given knowledge points."""
-    traces = []
-    for kid in knowledge_ids:
-        log_path = query_knowledge_reasoning_path(kid)
-        if log_path and os.path.exists(log_path):
-            try:
-                with open(log_path, "r", encoding="utf-8") as f:
-                    content = f.read(3000)  # Limit to avoid huge prompts
-                    traces.append(f"--- 知识点 {kid} 的原始推理链路 ---\n{content}")
-                logger.info("Read reasoning trace for knowledge %d from %s", kid, log_path)
-            except Exception as e:
-                logger.warning("Failed to read reasoning trace for knowledge %d: %s", kid, e)
-        else:
-            logger.info("No reasoning trace file for knowledge %d (path=%s)", kid, log_path)
-    return "\n\n".join(traces)
-
-
 def reflect(state: dict) -> dict:
     contradiction_details = state.get("contradiction_details", "")
     answer = state.get("answer", "")
@@ -54,9 +35,6 @@ def reflect(state: dict) -> dict:
     user_message = state.get("user_message", "")
 
     logger.info("Reflecting on contradiction (severity=%s, attempts=%d)", severity, correction_attempts)
-
-    # Read original reasoning traces for the conflicting knowledge points
-    original_trace = _read_reasoning_trace(knowledge_ids)
 
     # Search for similar historical error records
     error_lessons = []
@@ -93,7 +71,6 @@ def reflect(state: dict) -> dict:
         "\n2. answer_wrong — 新生成的回答是幻觉或错误"
         "\n3. unresolved — 无法确定"
         "\n\n注意：如果 severity 为 low，可能两者在不同上下文中都正确。"
-        "\n如果原始推理链路显示知识入库时本身就存在推理缺陷，更可能归因于 stored_knowledge_wrong。"
     )
 
     prompt = "\n".join(prompt_parts)

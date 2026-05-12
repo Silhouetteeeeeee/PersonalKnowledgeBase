@@ -20,7 +20,10 @@ def build_context_block(state: dict) -> str:
         parts.append("")
         parts.append("## 相关知识")
         for k in state["stored_knowledge"]:
-            parts.append(f"- {k['knowledge_text']}")
+            if k.get("type") == "wiki_page":
+                parts.append(f"- [{k['title']}]: {k['content'][:200]}")
+            else:
+                parts.append(f"- {k.get('knowledge_text', k.get('title', ''))}")
 
     if state.get("message_history"):
         parts.append("")

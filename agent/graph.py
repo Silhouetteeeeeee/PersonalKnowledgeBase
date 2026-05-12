@@ -10,7 +10,6 @@ from agent.nodes.fact_check import fact_check
 from agent.nodes.search_web import search_web_node
 from agent.nodes.regenerate import regenerate
 from agent.nodes.reflect import reflect
-from agent.nodes.correct_knowledge import correct_knowledge
 from agent.nodes.record_error import record_error
 from agent.nodes.store import store
 from agent.nodes.respond import respond
@@ -39,22 +38,14 @@ def reflect_router(state: dict) -> str:
     result = state.get("reflection_result", "unresolved")
 
     if result == "stored_knowledge_wrong":
-        logger.info("Router: stored knowledge wrong → correct_knowledge")
-        return "correct_knowledge"
+        logger.info("Router: stored knowledge wrong → record_error")
+        return "record_error"
     elif result == "answer_wrong":
         logger.info("Router: answer wrong → record_error")
         return "record_error"
     else:
         logger.info("Router: unresolved → respond")
         return "respond"
-
-
-def post_correction_router(state: dict) -> str:
-    if state.get("force_web_search"):
-        logger.info("Router: correction done, verifying via web search")
-        return "search_web"
-    logger.info("Router: correction done, re-running fact check")
-    return "fact_check"
 
 
 def post_error_router(state: dict) -> str:
@@ -87,7 +78,6 @@ def build_graph() -> StateGraph:
 
     # Reflection nodes
     builder.add_node("reflect", reflect)
-    builder.add_node("correct_knowledge", correct_knowledge)
     builder.add_node("record_error", record_error)
     builder.add_node("update_profile", update_profile)
 
@@ -111,22 +101,14 @@ def build_graph() -> StateGraph:
         {"reflect": "reflect", "store": "store"},
     )
 
-    # reflect → [correct_knowledge | record_error | respond]
+    # reflect → [record_error | respond]
     builder.add_conditional_edges(
         "reflect",
         reflect_router,
         {
-            "correct_knowledge": "correct_knowledge",
             "record_error": "record_error",
             "respond": "respond",
         },
-    )
-
-    # correct_knowledge → [search_web | fact_check]
-    builder.add_conditional_edges(
-        "correct_knowledge",
-        post_correction_router,
-        {"search_web": "search_web", "fact_check": "fact_check"},
     )
 
     # record_error → search_web (always force search for correction)
@@ -140,7 +122,7 @@ def build_graph() -> StateGraph:
     logger.info(
         "Graph built: parse → rewrite_query → retrieve → classify_and_answer → "
         "fact_check → "
-        "[reflect→correct_knowledge/record_error|store] → respond"
+        "[reflect→record_error|store] → respond"
     )
 
     return compiled

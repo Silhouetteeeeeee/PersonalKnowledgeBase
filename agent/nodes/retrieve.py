@@ -6,7 +6,7 @@ Falls back to old knowledge_points search if no wiki pages exist.
 
 import logging
 
-from storage.models import find_similar_pages, get_related_pages, get_page_by_title, search_knowledge_points_semantic, rerank_knowledge
+from storage.models import find_similar_pages, get_related_pages, get_page_by_title
 from storage.wiki_storage import read_page
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,9 @@ def retrieve(state: dict) -> dict:
     if pages:
         return _retrieve_wiki_pages(pages, query)
 
-    # Step 2: Fallback to knowledge_points
-    logger.info("No wiki pages found, falling back to knowledge_points")
-    return _retrieve_knowledge_points(query)
+    # Step 2: No wiki pages found
+    logger.info("No wiki pages found, returning empty")
+    return {"stored_knowledge": []}
 
 
 def _retrieve_wiki_pages(pages: list[dict], query: str) -> dict:
@@ -75,28 +75,3 @@ def _retrieve_wiki_pages(pages: list[dict], query: str) -> dict:
     return {"stored_knowledge": results}
 
 
-def _retrieve_knowledge_points(query: str) -> dict:
-    """Fallback: use old knowledge_points semantic search + rerank + keyword."""
-    try:
-        candidates = search_knowledge_points_semantic(query, threshold=0.6, limit=20)
-    except Exception as e:
-        logger.warning("Knowledge point search failed: %s", e)
-        candidates = []
-
-    if len(candidates) > 3:
-        try:
-            results = rerank_knowledge(query, candidates, top_k=5)
-            return {"stored_knowledge": results}
-        except Exception as e:
-            logger.warning("Reranker failed: %s, using vector ordering", e)
-            results = candidates[:5]
-            return {"stored_knowledge": results}
-
-    if candidates:
-        results = candidates[:5]
-        return {"stored_knowledge": results}
-
-    # Keyword search fallback
-    from storage.models import search_knowledge_points
-    results = search_knowledge_points(query, limit=5)
-    return {"stored_knowledge": results}
