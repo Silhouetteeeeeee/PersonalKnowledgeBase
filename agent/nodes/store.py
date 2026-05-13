@@ -248,15 +248,20 @@ def extract_to_wiki(
 
     for wp in batch.pages:
         tags = wp.tags
-        sources = wp.sources
-        if source_id not in sources:
-            sources.append(source_id)
-
         filename = title_to_filename(wp.title)
         file_path = os.path.join("pages", filename)
 
         existing_page_data = read_page(file_path)
-        created_str = existing_page_data.get("created", "") if existing_page_data else ""
+        created_str = existing_page_data.get("created", "") if existing_page_data else now
+
+        # Override sources: use real source_id, merge with existing on update
+        sources = [source_id]
+        if existing_page_data:
+            old_sources = existing_page_data.get("sources", [])
+            if isinstance(old_sources, list):
+                for s in old_sources:
+                    if s not in sources:
+                        sources.append(s)
 
         frontmatter = build_frontmatter(
             title=wp.title,
