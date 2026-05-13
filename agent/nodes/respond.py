@@ -82,6 +82,7 @@ def respond(state: dict) -> dict:
             logger.info("Appended unresolved contradiction warning")
         elif reflection_result == "stored_knowledge_wrong":
             warning = "\n\n[检测到知识库中存在过时信息] 已标记待审核。"
+            answer += warning
             logger.info("Appended knowledge correction notice")
         elif reflection_result == "answer_wrong":
             warning = "\n\n[已记录本次回答中的错误，将用于后续改进]"
