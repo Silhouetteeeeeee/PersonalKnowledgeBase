@@ -18,6 +18,7 @@ from storage.models import (
     upsert_page,
     update_page_relations,
     get_page_by_title,
+    find_similar_pages,
 )
 from storage.wiki_storage import (
     ensure_dirs,
@@ -73,14 +74,47 @@ class WikiBatchOutput(BaseModel):
 
 # ── Prompt templates ──
 
-def _build_analysis_prompt(source_text: str, source_label: str) -> str:
+def _find_similar_existing_pages(source_text: str, max_pages: int = 5) -> list[dict]:
+    """Find semantically similar existing pages to help prevent duplicates."""
+    similar = find_similar_pages(source_text, threshold=0.5, limit=max_pages)
+    result = []
+    for p in similar:
+        file_page = read_page(p["file_path"])
+        if file_page:
+            body = file_page["body"]
+            preview = body[:200] + "..." if len(body) > 200 else body
+            result.append({
+                "title": p["title"],
+                "body_preview": preview,
+                "distance": p.get("distance", 0),
+            })
+    return result
+
+
+def _build_analysis_prompt(
+    source_text: str,
+    source_label: str,
+    similar_pages: list[dict] | None = None,
+) -> str:
     schema_content = read_schema()
     page_index = get_index_for_prompt()
+
+    similar_text = ""
+    if similar_pages:
+        similar_text = "## Similar Existing Pages\n\n"
+        similar_text += (
+            "The following pages may already cover topics from the source content. "
+            "If the topic already exists, prefer to UPDATE the existing page "
+            "rather than creating a duplicate.\n\n"
+        )
+        for sp in similar_pages:
+            similar_text += f"### {sp['title']}\n\n{sp['body_preview']}\n\n---\n\n"
 
     return (
         f"{schema_content}\n\n"
         f"## Current Wiki Page Index\n\n"
         f"{page_index}\n\n"
+        f"{similar_text}"
         f"## Source Content to Analyze\n\n"
         f"Context: {source_label}\n\n"
         f"{source_text}\n\n"
@@ -91,7 +125,9 @@ def _build_analysis_prompt(source_text: str, source_label: str) -> str:
         f"4. If the new content contradicts existing knowledge, note it\n\n"
         f"Note: Different topics may need different actions. "
         f"For example, one Q&A might update an existing 'Django' page "
-        f"while creating a new 'ORM Optimization' page."
+        f"while creating a new 'ORM Optimization' page.\n"
+        f"Important: If the source content covers the same topic as an existing page, "
+        f"always choose 'update' rather than creating a duplicate."
     )
 
 
@@ -181,9 +217,15 @@ def extract_to_wiki(
     """
     ensure_dirs()
 
+    # ── Step 0: Find similar existing pages (dedup) ──
+    similar_pages = _find_similar_existing_pages(source_text)
+    if similar_pages:
+        logger.info("Found %d similar existing pages for dedup context: %s",
+                    len(similar_pages), [s["title"] for s in similar_pages])
+
     # ── Step 1: Analysis ──
     logger.info("Step 1: Analyzing content for wiki extraction...")
-    analysis_prompt = _build_analysis_prompt(source_text, source_label)
+    analysis_prompt = _build_analysis_prompt(source_text, source_label, similar_pages)
     analysis = LLM.generate_structured(analysis_prompt, AnalysisOutput, use_language=False)
     if analysis is None:
         logger.error("Analysis LLM returned None")
@@ -211,7 +253,7 @@ def extract_to_wiki(
             sources.append(source_id)
 
         filename = title_to_filename(wp.title)
-        file_path = os.path.join("wiki", "pages", filename)
+        file_path = os.path.join("pages", filename)
 
         existing_page_data = read_page(file_path)
         created_str = existing_page_data.get("created", "") if existing_page_data else ""
