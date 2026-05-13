@@ -9,13 +9,17 @@ Personal Knowledge Base Agent — a WeChat Work smart bot powered by LangGraph. 
 ## Commands
 
 ```bash
-# Run tests (single)
-pytest tests/test_nodes.py -v -k test_parse
-pytest tests/test_graph.py -v
-pytest tests/test_storage.py -v
+# Run unit tests (fast, ~18s)
+pytest -v
+
+# Run integration tests (slow, real LLM calls)
+pytest tests/integration/ -v
 
 # Run all tests
-pytest -v
+pytest tests/unit/ tests/integration/ -v
+
+# Run single test
+pytest tests/unit/test_nodes.py -v -k test_parse
 
 # Run the bot
 python main.py

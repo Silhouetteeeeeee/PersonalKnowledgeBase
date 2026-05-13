@@ -1,6 +1,6 @@
+"""Integration tests: full graph with real LLM calls."""
 import pytest
 from storage.database import init_db
-from storage.profile import load_profile
 
 
 @pytest.fixture(autouse=True)
@@ -12,13 +12,6 @@ def temp_db(monkeypatch, tmp_path):
     init_db()
 
 
-def test_build_graph():
-    from agent.graph import build_graph
-
-    graph = build_graph()
-    assert graph is not None
-
-
 def test_graph_short_circuit():
     """Test graph runs end-to-end with a simple question the LLM knows."""
     from agent.graph import build_graph
@@ -28,44 +21,10 @@ def test_graph_short_circuit():
         "user_message": "What is Python?",
         "user_id": "test_user",
         "timestamp": "2026-05-02T12:00:00",
-        "user_profile": load_profile(),
+        "user_profile": {},
     })
-    print(result)
     assert result["final_response"]
     assert len(result["final_response"]) > 0
-
-
-def test_graph_with_no_answer():
-    """Test that empty messages don't crash."""
-    from agent.graph import build_graph
-
-    graph = build_graph()
-    result = graph.invoke({
-        "user_message": "",
-        "user_id": "test_user",
-        "timestamp": "2026-05-02T12:00:00",
-        "user_profile": load_profile(),
-    })
-    assert "final_response" in result
-
-
-def test_graph_has_rewrite_query_node():
-    """Graph should include the rewrite_query node."""
-    from agent.graph import build_graph
-
-    g = build_graph()
-    assert "rewrite_query" in g.nodes
-
-
-def test_graph_rewrite_query_edge():
-    """parse should connect to rewrite_query (verify via nodes and bootstrap)."""
-    from agent.graph import build_graph
-
-    g = build_graph()
-    # Verify the nodes are connected in the right order by running bootstrap
-    assert "rewrite_query" in g.nodes
-    assert "parse" in g.nodes
-    assert "retrieve" in g.nodes
 
 
 def test_graph_search_query_flows_to_retrieve(monkeypatch, tmp_path):
@@ -85,7 +44,6 @@ def test_graph_search_query_flows_to_retrieve(monkeypatch, tmp_path):
         checksum="abc",
         content="Python dict is a key-value store",
     )
-    # Write content to disk (retrieve reads from filesystem)
     write_page(file_path, "---\ntitle: Python dict\ntags: [python, dict]\n---\n\nPython dict is a key-value store")
 
     monkeypatch.setattr(
