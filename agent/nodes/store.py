@@ -73,7 +73,7 @@ class WikiBatchOutput(BaseModel):
 
 # ── Prompt templates ──
 
-def _build_analysis_prompt(user_message: str, answer: str) -> str:
+def _build_analysis_prompt(source_text: str, source_label: str) -> str:
     schema_content = read_schema()
     page_index = get_index_for_prompt()
 
@@ -81,11 +81,11 @@ def _build_analysis_prompt(user_message: str, answer: str) -> str:
         f"{schema_content}\n\n"
         f"## Current Wiki Page Index\n\n"
         f"{page_index}\n\n"
-        f"## Q&A to Analyze\n\n"
-        f"Question: {user_message}\n"
-        f"Answer: {answer}\n\n"
+        f"## Source Content to Analyze\n\n"
+        f"Context: {source_label}\n\n"
+        f"{source_text}\n\n"
         f"## Analysis Requirements\n\n"
-        f"1. Identify all topics covered in this Q&A\n"
+        f"1. Identify all topics covered in this content\n"
         f"2. For each topic, decide whether to create a new page or update an existing one\n"
         f"3. List existing pages related to this content\n"
         f"4. If the new content contradicts existing knowledge, note it\n\n"
@@ -97,8 +97,8 @@ def _build_analysis_prompt(user_message: str, answer: str) -> str:
 
 def _build_generation_prompt(
     analysis: AnalysisOutput,
-    user_message: str,
-    answer: str,
+    source_text: str,
+    source_label: str,
     existing_page_contents: list[dict],
 ) -> str:
     schema_content = read_schema()
@@ -128,9 +128,9 @@ def _build_generation_prompt(
         f"Related pages: {', '.join(analysis.related_pages) if analysis.related_pages else 'None'}\n"
         f"Contradictions: {', '.join(analysis.contradictions) if analysis.contradictions else 'None found'}\n\n"
         f"{existing_text}"
-        f"## Original Q&A\n\n"
-        f"Question: {user_message}\n"
-        f"Answer: {answer}\n\n"
+        f"## Original Content\n\n"
+        f"Context: {source_label}\n\n"
+        f"{source_text}\n\n"
         f"## Generation Requirements\n\n"
         f"Based on the analysis above, generate wiki page content:\n"
         f"1. Content field must contain only the body (NO frontmatter)\n"
@@ -164,40 +164,37 @@ def _read_existing_pages(actions: list[AnalysisAction]) -> list[dict]:
     return existing
 
 
-def store(state: dict) -> dict:
-    """Two-step CoT extraction: analyze -> generate -> write."""
-    if not state.get("needs_store", True):
-        logger.info("Skipping store: needs_store=False")
-        return {}
+def extract_to_wiki(
+    source_text: str,
+    source_id: str,
+    source_label: str,
+) -> dict:
+    """Two-step CoT: analyze -> generate -> write -> index.
 
-    if not state.get("answer"):
-        logger.info("Skipping store: no answer")
-        return {}
+    Args:
+        source_text: Full text to analyze (answer text or file text).
+        source_id: Unique identifier for this extraction.
+        source_label: Short descriptor for prompt context.
 
-    if state.get("contradiction_found"):
-        logger.info("Skipping store: contradiction detected")
-        return {}
-
+    Returns:
+        dict with "page_ids" (list[int]) and "logic_chain" (list[dict]).
+    """
     ensure_dirs()
-    user_msg = state["user_message"]
-    answer = state["answer"]
-    source_id = _get_source_id()
 
     # ── Step 1: Analysis ──
-    logger.info("Step 1: Analyzing Q&A for wiki content...")
-    analysis_prompt = _build_analysis_prompt(user_msg, answer)
+    logger.info("Step 1: Analyzing content for wiki extraction...")
+    analysis_prompt = _build_analysis_prompt(source_text, source_label)
     analysis = LLM.generate_structured(analysis_prompt, AnalysisOutput, use_language=False)
     if analysis is None:
         logger.error("Analysis LLM returned None")
         return {}
     logger.info("Analysis complete: %d topics, %d actions",
                 len(analysis.topics), len(analysis.actions))
-    logger.info("Update topics: %s", list(filter(lambda it: it.action == 'update', analysis.actions)))
 
     # ── Step 2: Generation ──
     existing_contents = _read_existing_pages(analysis.actions)
     logger.info("Step 2: Generating wiki page(s)...")
-    gen_prompt = _build_generation_prompt(analysis, user_msg, answer, existing_contents)
+    gen_prompt = _build_generation_prompt(analysis, source_text, source_label, existing_contents)
     batch = LLM.generate_structured(gen_prompt, WikiBatchOutput, use_language=False)
     if batch is None or not batch.pages:
         logger.error("Generation LLM returned None or empty pages")
@@ -216,11 +213,9 @@ def store(state: dict) -> dict:
         filename = title_to_filename(wp.title)
         file_path = os.path.join("wiki", "pages", filename)
 
-        # Check if page already exists -> preserve created date
         existing_page_data = read_page(file_path)
         created_str = existing_page_data.get("created", "") if existing_page_data else ""
 
-        # Build final content with frontmatter
         frontmatter = build_frontmatter(
             title=wp.title,
             tags=tags,
@@ -230,10 +225,8 @@ def store(state: dict) -> dict:
         )
         full_content = frontmatter + "\n\n" + wp.content.strip()
 
-        # Write to file
         checksum = write_page(file_path, full_content)
 
-        # Update SQLite index
         pid = upsert_page(
             title=wp.title,
             file_path=file_path,
@@ -244,18 +237,15 @@ def store(state: dict) -> dict:
         )
         saved_ids.append(pid)
 
-        # Extract [[wikilinks]] and update relations
         links = extract_wikilinks(full_content)
         if links:
             update_page_relations(pid, links)
 
-    # ── Rebuild index.md ──
     rebuild_index()
-    logger.info("Stored %d wiki pages from this Q&A", len(saved_ids))
+    logger.info("Stored %d wiki pages", len(saved_ids))
 
     return {
-        "stored_knowledge_ids": saved_ids,
-        "wiki_page_ids": saved_ids,
+        "page_ids": saved_ids,
         "logic_chain": [{
             "node": "store",
             "action": f"Wiki: stored {len(saved_ids)} pages",
@@ -264,4 +254,32 @@ def store(state: dict) -> dict:
                 f"Actions: {[a.action for a in analysis.actions]}"
             ),
         }],
+    }
+
+
+def store(state: dict) -> dict:
+    """Two-step CoT extraction: analyze -> generate -> write."""
+    if not state.get("needs_store", True):
+        logger.info("Skipping store: needs_store=False")
+        return {}
+
+    if not state.get("answer"):
+        logger.info("Skipping store: no answer")
+        return {}
+
+    if state.get("contradiction_found"):
+        logger.info("Skipping store: contradiction detected")
+        return {}
+
+    source_id = _get_source_id()
+    source_label = f"Question: {state['user_message']}"
+    result = extract_to_wiki(state["answer"], source_id, source_label)
+
+    if not result.get("page_ids"):
+        return {}
+
+    return {
+        "stored_knowledge_ids": result["page_ids"],
+        "wiki_page_ids": result["page_ids"],
+        "logic_chain": result.get("logic_chain", []),
     }

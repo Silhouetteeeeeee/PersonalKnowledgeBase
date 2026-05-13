@@ -280,3 +280,22 @@ def test_graph_includes_fact_check():
 #     assert isinstance(float(scores[0]), float)
 
 
+def test_extract_to_wiki_creates_pages(monkeypatch, tmp_path):
+    """Call extract_to_wiki with simple text -> creates wiki pages."""
+    from storage.database import DB_DIR, DB_PATH
+
+    monkeypatch.setattr("storage.database.DB_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr("storage.database.DB_PATH", str(tmp_path / "data" / "knowledge.db"))
+    monkeypatch.setattr("storage.wiki_storage.WIKI_DIR", str(tmp_path / "wiki"))
+
+    from storage.database import init_db
+    init_db()
+
+    from agent.nodes.store import extract_to_wiki
+    result = extract_to_wiki(
+        "Python dict is a key-value store",
+        "test_001",
+        "Question: What is Python dict?",
+    )
+    assert "page_ids" in result
+    assert len(result["page_ids"]) >= 1
