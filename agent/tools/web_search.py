@@ -42,7 +42,7 @@ def search_web_from_baidu(query: str) -> list[str]:
         response = requests.post(url, json=data, headers=headers)
         response.raise_for_status()
         data = response.json()
-        return data["references"]
+        return [item['content'] for item in data["references"]]
     except Exception as e:
         return [f"[Search error: {e}]"]
 

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
 from storage.models import find_similar_pages
+from storage.wiki_storage import read_page
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,15 @@ def _search_related(state: dict) -> tuple[list[dict], str]:
     if not related:
         return [], ""
 
-    knowledge_text = "\n".join(f"- {k['title']}: {k.get('content', '(详见页面)')}" for k in related)
+    # Read actual page content from filesystem
+    knowledge_lines = []
+    for k in related:
+        page = read_page(k["file_path"])
+        if page:
+            knowledge_lines.append(f"- {k['title']}: {page['body'][:500]}")
+        else:
+            knowledge_lines.append(f"- {k['title']}: (页面文件不存在)")
+    knowledge_text = "\n".join(knowledge_lines)
     return related, knowledge_text
 
 

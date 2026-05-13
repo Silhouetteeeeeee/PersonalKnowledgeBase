@@ -51,8 +51,6 @@ def _save_reasoning_log(state: dict) -> str:
             lines.append(f"\n**思考过程：**\n{reasoning}")
         lines.append("")
 
-    if state.get("knowledge_corrected"):
-        lines.append("## 知识库修正\n知识库中过时/错误的知识已被标记废弃并替换。")
     if state.get("error_recorded"):
         lines.append("## 错误记录\n本次回答中的错误已被记录，将用于后续改进。")
 
@@ -83,12 +81,7 @@ def respond(state: dict) -> dict:
             answer += warning
             logger.info("Appended unresolved contradiction warning")
         elif reflection_result == "stored_knowledge_wrong":
-            warning = "\n\n[检测到知识库中存在过时信息]"
-            if state.get("knowledge_corrected"):
-                warning += " 已自动修正。"
-            else:
-                warning += " 已标记待审核。"
-            answer += warning
+            warning = "\n\n[检测到知识库中存在过时信息] 已标记待审核。"
             logger.info("Appended knowledge correction notice")
         elif reflection_result == "answer_wrong":
             warning = "\n\n[已记录本次回答中的错误，将用于后续改进]"

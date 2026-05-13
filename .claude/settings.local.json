@@ -11,7 +11,11 @@
       "Bash(python main.py)",
       "Bash(pip install *)",
       "Bash(python -m pytest tests/ -v)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(python *)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/python *)",
+      "Bash(git check-ignore *)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/python.exe *)"
     ]
   },
   "enabledPlugins": {

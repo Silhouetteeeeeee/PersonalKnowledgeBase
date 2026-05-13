@@ -32,7 +32,6 @@ class AgentState(TypedDict):
     # Control flags
     force_web_search: bool
     correction_attempts: int
-    knowledge_corrected: bool
     error_recorded: bool
 
     # Reasoning trace (accumulates across nodes via operator.add)

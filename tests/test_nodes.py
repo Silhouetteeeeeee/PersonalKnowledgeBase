@@ -154,9 +154,8 @@ def test_respond_reflection_stored_knowledge_wrong():
         "answer": "Python is a scripting language",
         "contradiction_found": True,
         "reflection_result": "stored_knowledge_wrong",
-        "knowledge_corrected": True,
     })
-    assert "已自动修正" in result["final_response"]
+    assert "已标记待审核" in result["final_response"]
     assert "[矛盾警告]" not in result["final_response"]
 
 

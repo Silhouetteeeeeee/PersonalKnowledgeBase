@@ -55,7 +55,7 @@ class ClaudeCodeBridge:
         if not _check_claude():
             return "❌ 未检测到 Claude Code，请先安装：npm install -g @anthropic-ai/claude-code"
 
-        cmd = [r"C:\Program Files\nodejs\claude.cmd", "--print", message, "--resume", "remote-cli"]
+        cmd = [r"C:\Program Files\nodejs\claude.cmd", "--print", message, "--resume", "reflect"]
         if self._has_conversation:
             cmd.append("--continue")
 

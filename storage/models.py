@@ -294,7 +294,7 @@ def save_error_record_with_embedding(record: dict) -> int:
              record.get("error_type", "unknown")),
         )
         eid = cur.lastrowid
-        # Store error record in knowledge_vectors with an offset rowid to avoid collision
+        # Store error record in error_vectors with an offset rowid to avoid collision
         embedding = generate_embedding(record["user_message"] + " " + record["wrong_answer"])
         conn.execute(
             "INSERT INTO error_vectors(rowid, embedding) VALUES (?, ?)",

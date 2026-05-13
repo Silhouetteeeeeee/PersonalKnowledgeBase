@@ -106,7 +106,6 @@ class KnowledgeBot:
                     "reflection_correction": "",
                     "force_web_search": False,
                     "correction_attempts": 0,
-                    "knowledge_corrected": False,
                     "error_recorded": False,
                     "logic_chain": [],
                 })

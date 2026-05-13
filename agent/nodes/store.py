@@ -192,6 +192,7 @@ def store(state: dict) -> dict:
         return {}
     logger.info("Analysis complete: %d topics, %d actions",
                 len(analysis.topics), len(analysis.actions))
+    logger.info("Update topics: %s", list(filter(lambda it: it.action == 'update', analysis.actions)))
 
     # ── Step 2: Generation ──
     existing_contents = _read_existing_pages(analysis.actions)

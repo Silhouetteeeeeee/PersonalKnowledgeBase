@@ -54,10 +54,6 @@ def reflect(state: dict) -> dict:
         f"\n当前修正尝试：{correction_attempts + 1} / 2",
     ]
 
-    if original_trace:
-        prompt_parts.append(f"\n\n知识点入库时的原始推理链路：\n{original_trace}")
-        prompt_parts.append("\n（请分析原始推理是否有缺陷，或知识是否已过时）")
-
     if error_lessons:
         lessons_text = "\n".join(
             f"- 问题：{e['user_message'][:50]} | 错误：{e['wrong_answer'][:50]} | 修正：{e['correct_answer'][:50]}"

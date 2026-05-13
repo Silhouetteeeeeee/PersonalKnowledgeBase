@@ -32,18 +32,18 @@ A `StateGraph` with these nodes in order:
 
 1. **parse** — strips/validates input
 2. **rewrite_query** — rewrites the user query into a standalone search query (with conversation context)
-3. **retrieve** — vector search (BAAI/bge-small-zh-v1.5) → cross-encoder rerank (BAAI/bge-reranker-v2-m3) to find relevant knowledge
+3. **retrieve** — vector search (BAAI/bge-small-zh-v1.5) for wiki page retrieval
 4. **classify_and_answer** — ReAct agent with web search tool, produces structured output (answer, confidence, needs_store)
 5. **update_profile** — updates user profile from conversation (parallel with fact_check)
 6. **fact_check** — checks answer against stored knowledge for contradictions
 7. **reflect** — if contradiction found, determines whether stored knowledge or new answer is wrong
-8. **correct_knowledge** / **record_error** — fixes knowledge or records the error
+8. **record_error** — records the error for future reference
 9. **search_web** — fallback web search when needed
 10. **regenerate** — regenerates answer with web search results
-11. **store** — LLM distills Q&A into knowledge points, deduplicates via vector similarity, saves with embeddings
+11. **store** — LLM distills Q&A into wiki pages via two-step CoT extraction (analyze → generate)
 12. **respond** — builds final response, writes reasoning log
 
-**Contradiction loop**: fact_check → reflect → correct_knowledge/record_error → search_web → fact_check (max 2 cycles)
+**Contradiction loop**: fact_check → reflect → record_error → search_web → fact_check (max 2 cycles)
 
 ### State (agent/state.py)
 
@@ -52,7 +52,7 @@ Central `AgentState` TypedDict holds all runtime data: message, user context, kn
 ### Storage Layer (storage/)
 
 - **SQLite** (`knowledge.db`) with `sqlite-vec` for vector search (512-dim cosine distance)
-- Tables: `categories`, `knowledge_points`, `knowledge_vectors` (vec0 virtual), `file_records`, `error_records`, `error_vectors`
+- Tables: `pages`, `page_vectors` (vec0 virtual), `page_relations`, `file_records`, `error_records`, `error_vectors`
 - **Profile** per user as JSON files in `data/profiles/` with backup rotation
 - **File processing** via `file_processor.py`: PDF (PyMuPDF), DOCX, XMind, images (PaddleOCR), plain text
 
@@ -80,7 +80,5 @@ Unified `LLM` class wrapping `ChatDeepSeek` (langchain-deepseek). Supports struc
 
 - **DeepSeek-chat** as the default LLM (configurable via `.env`)
 - **fastembed** (BAAI/bge-small-zh-v1.5) for embedding — lazy-loaded singleton, thread-safe
-- **Cross-encoder reranker** (BAAI/bge-reranker-v2-m3) for precision improvement when >3 candidates
-- Category normalization: lowercase, unified separators, 4-level max hierarchy
-- Knowledge dedup: vector similarity check (cosine distance < 0.25) before insertion
+- **Wiki pages** as the only knowledge store — page content lives in markdown files on disk, SQLite serves as index for vector search
 - Output language: controlled by `OUTPUT_LANGUAGE` env var (default English, no extra prompt tokens)

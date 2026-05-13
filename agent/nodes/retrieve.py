@@ -1,7 +1,7 @@
 """Wiki page retrieval: vector search -> read full pages -> expand relations.
 
-Returns page content instead of knowledge_point fragments.
-Falls back to old knowledge_points search if no wiki pages exist.
+Returns full wiki page content from filesystem, including relation-expanded pages.
+Returns empty list when no matching wiki pages found.
 """
 
 import logging
