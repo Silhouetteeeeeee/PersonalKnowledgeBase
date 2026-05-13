@@ -148,3 +148,37 @@ def test_file_record_has_correct_schema():
     assert "knowledge_ids" in columns
     assert "source_user_id" in columns
     assert "created_at" in columns
+
+
+def test_process_file_creates_wiki_pages(monkeypatch, tmp_path):
+    """Upload a .txt file -> text extracted -> wiki pages created."""
+    from storage.database import DB_DIR, DB_PATH
+
+    monkeypatch.setattr("storage.database.DB_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr("storage.database.DB_PATH", str(tmp_path / "data" / "knowledge.db"))
+    monkeypatch.setattr("storage.wiki_storage.WIKI_DIR", str(tmp_path / "wiki"))
+
+    from storage.database import init_db
+    init_db()
+
+    from server.bot import _process_and_store_file
+    content = b"Python dict is a key-value store. List is an ordered collection."
+    result = _process_and_store_file(content, "test.txt", "user1")
+    assert "wiki" in result.lower() or "页面" in result
+
+
+def test_process_file_too_large(monkeypatch, tmp_path):
+    """File with >8000 chars -> rejected with length warning."""
+    from storage.database import DB_DIR, DB_PATH
+
+    monkeypatch.setattr("storage.database.DB_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr("storage.database.DB_PATH", str(tmp_path / "data" / "knowledge.db"))
+    monkeypatch.setattr("storage.wiki_storage.WIKI_DIR", str(tmp_path / "wiki"))
+
+    from storage.database import init_db
+    init_db()
+
+    from server.bot import _process_and_store_file, MAX_FILE_CHARS
+    large_content = b"A" * (MAX_FILE_CHARS + 1)
+    result = _process_and_store_file(large_content, "large.txt", "user1")
+    assert "过长" in result

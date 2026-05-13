@@ -208,15 +208,18 @@ def run_bot():
 
 # ── 文件处理（同步，在独立线程中执行）──
 
+MAX_FILE_CHARS = 8000
+
+
 def _process_and_store_file(file_bytes: bytes, filename: str, user_id: str) -> str:
-    """保存文件、提取文字、LLM 蒸馏、存储知识。返回回复文本。"""
+    """保存文件、提取文字、两步 CoT 提取 wiki 页面。返回回复文本。"""
     from storage.database import DB_DIR
     from storage.file_processor import extract_text_from_file, compute_file_hash
     from storage.models import (
         save_file_record,
         get_file_record_by_hash,
     )
-    from agent.nodes.store import _BASE_DISTILL_PROMPT, _distill_and_save
+    from agent.nodes.store import extract_to_wiki
 
     file_hash = compute_file_hash(file_bytes)
     ext = os.path.splitext(filename)[1].lower() or ".bin"
@@ -244,27 +247,26 @@ def _process_and_store_file(file_bytes: bytes, filename: str, user_id: str) -> s
 
     logger.info("Extracted %d chars from %s", len(text), filename)
 
-    # LLM 蒸馏为知识点（使用与 store 节点相同的提示词基座）
-    prompt = (
-        _BASE_DISTILL_PROMPT + "\n\n"
-        f"请将以下从文件「{filename}」中提取的文字内容提炼为知识点。"
-        f"如果内容涉及多个主题，请分多条知识点存储，并为每条添加合适的标签。\n\n"
-        f"内容：\n{text}"
-    )
-    saved = _distill_and_save(
-        prompt=prompt,
-        source_question=f"[文件] {filename}",
+    # 长度检查
+    if len(text) > MAX_FILE_CHARS:
+        logger.warning("File too long: %d chars (max %d)", len(text), MAX_FILE_CHARS)
+        return f"文件「{filename}」内容过长（{len(text)} 字符），暂不支持处理超过 {MAX_FILE_CHARS} 字符的文档。"
+
+    # 两步 CoT 提取为 wiki 页面
+    saved = extract_to_wiki(
+        source_text=text,
+        source_id=f"file_{file_hash}",
+        source_label=f"From file: {filename}",
     )
 
-    if not saved:
-        return f"未能从文件「{filename}」中提取到知识点。"
+    if not saved.get("page_ids"):
+        return f"未能从文件「{filename}」中提取到 wiki 页面。"
 
     # 记录文件处理记录
-    save_file_record(filename, ext, file_hash, text, saved["stored_knowledge_ids"], user_id)
+    save_file_record(filename, ext, file_hash, text, saved["page_ids"], user_id)
 
     reply = (
-        f"已从文件「{filename}」中提取并存储了 {len(saved['stored_knowledge_ids'])} 条知识点\n"
-        f"分类：{saved['category']}"
+        f"已从文件「{filename}」中提取并创建了 {len(saved['page_ids'])} 篇 wiki 页面"
     )
-    logger.info("File processed: %s → %d points in '%s'", filename, len(saved['stored_knowledge_ids']), saved['category'])
+    logger.info("File processed: %s -> %d wiki pages", filename, len(saved['page_ids']))
     return reply
