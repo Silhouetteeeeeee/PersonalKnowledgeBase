@@ -181,33 +181,94 @@ def update_page_relations(page_id: int, linked_titles: list[str]) -> None:
         conn.close()
 
 
-# ── Source question helpers ──
+# ── Version helpers ──
 
-def save_source_question(source_id: str, question: str) -> None:
-    """Store the mapping from source_id to the user question that triggered it."""
+def save_page_version(
+    page_id: int,
+    title: str,
+    content: str,
+    checksum: str,
+    source_id: str = "",
+    source_question: str = "",
+) -> int:
+    """Save a new version of a wiki page. Auto-increments version number per page_id.
+
+    Returns the version number that was saved.
+    """
     conn = get_connection()
     try:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(version), 0) + 1 FROM page_versions WHERE page_id = ?",
+            (page_id,),
+        ).fetchone()
+        next_ver = row[0]
+
         conn.execute(
-            "INSERT OR IGNORE INTO source_questions (source_id, question) VALUES (?, ?)",
-            (source_id, question),
+            """INSERT INTO page_versions (page_id, version, title, content, checksum, source_id, source_question)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (page_id, next_ver, title, content, checksum, source_id, source_question),
         )
         conn.commit()
+        logger.info("Saved version %d for page '%s' (id=%d)", next_ver, title, page_id)
+        return next_ver
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
-def get_source_questions(source_ids: list[str]) -> list[str]:
-    """Look up questions for a list of source IDs."""
-    if not source_ids:
-        return []
-    placeholders = ",".join("?" for _ in source_ids)
+def get_page_versions(page_id: int, limit: int = 20) -> list[dict]:
+    """List versions for a page, most recent first."""
     conn = get_connection()
     try:
         rows = conn.execute(
-            f"SELECT question FROM source_questions WHERE source_id IN ({placeholders})",
-            source_ids,
+            """SELECT id, version, title, source_id, source_question, change_summary, created_at
+               FROM page_versions WHERE page_id = ?
+               ORDER BY version DESC LIMIT ?""",
+            (page_id, limit),
         ).fetchall()
-        return [r[0] for r in rows]
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_page_version(page_id: int, version: int) -> dict | None:
+    """Get a specific version's full content."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM page_versions WHERE page_id = ? AND version = ?",
+            (page_id, version),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def cleanup_old_versions(days: int = 30) -> int:
+    """Delete versions older than `days`, keeping at least 1 per page.
+
+    Returns number of deleted rows.
+    """
+    from datetime import datetime, timedelta
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    try:
+        deleted = conn.execute(
+            """DELETE FROM page_versions WHERE created_at < ? AND id NOT IN (
+                   SELECT MAX(id) FROM page_versions GROUP BY page_id
+               )""",
+            (cutoff,),
+        ).rowcount
+        conn.commit()
+        if deleted:
+            logger.info("Cleaned up %d old page versions (cutoff=%s)", deleted, cutoff)
+        return deleted
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
