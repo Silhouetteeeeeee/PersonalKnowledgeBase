@@ -14,7 +14,7 @@ def _embed_text(text: str) -> bytes | None:
     try:
         from sentence_transformers import SentenceTransformer
 
-        model = SentenceTransformer("BAAI/bge-small-zh-v1.5", quantize=True)
+        model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
         emb = model.encode(text).tolist()
         import struct
 
