@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
 from storage.database import get_connection
-from storage.models import get_source_questions
 from storage import wiki_storage
 
 logger = logging.getLogger(__name__)
@@ -47,6 +46,8 @@ def _get_yesterday_pages() -> list[dict]:
     if not rows:
         return []
 
+    # Build page list, querying source_question from page_versions in one connection
+    vconn = get_connection()
     pages = []
     for r in rows:
         fp = r["file_path"]
@@ -57,13 +58,14 @@ def _get_yesterday_pages() -> list[dict]:
                 raw = f.read()
             _, content = wiki_storage.parse_frontmatter(raw)
 
-        # Look up source questions
-        try:
-            source_ids = json.loads(r["sources"])
-        except (json.JSONDecodeError, TypeError):
-            source_ids = []
-        conv_ids = [s for s in source_ids if isinstance(s, str) and s.startswith("conv_")]
-        questions = get_source_questions(conv_ids) if conv_ids else []
+        # Look up source question from latest page_versions entry
+        questions = []
+        vr = vconn.execute(
+            "SELECT source_question FROM page_versions WHERE page_id = ? ORDER BY version DESC LIMIT 1",
+            (r["id"],),
+        ).fetchone()
+        if vr and vr["source_question"]:
+            questions = [vr["source_question"]]
 
         pages.append({
             "id": r["id"],
@@ -77,6 +79,7 @@ def _get_yesterday_pages() -> list[dict]:
             "source_questions": questions,
         })
 
+    vconn.close()
     return pages
 
 
