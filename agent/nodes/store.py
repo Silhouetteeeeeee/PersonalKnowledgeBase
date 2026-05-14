@@ -19,6 +19,7 @@ from storage.models import (
     update_page_relations,
     get_page_by_title,
     find_similar_pages,
+    save_source_question,
 )
 from storage.wiki_storage import (
     ensure_dirs,
@@ -347,6 +348,7 @@ def store(state: dict) -> dict:
         return {}
 
     source_id = _get_source_id()
+    save_source_question(source_id, state["user_message"])
     source_label = f"Question: {state['user_message']}"
     result = extract_to_wiki(state["answer"], source_id, source_label)
 
