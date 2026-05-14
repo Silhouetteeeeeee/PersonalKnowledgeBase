@@ -20,6 +20,7 @@ from memory.episodic import EpisodicMemory
 from server.claude_bridge import ClaudeCodeBridge
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from server.daily_summary import send_daily_summary
+from storage.models import cleanup_old_versions
 
 logger = logging.getLogger(__name__)
 graph = build_graph()
@@ -42,6 +43,7 @@ class KnowledgeBot:
         self.scheduler = AsyncIOScheduler()
         self._setup_handlers()
         self._start_daily_summary_scheduler()
+        self._start_cleanup_scheduler()
 
     def _setup_handlers(self):
         @self.client.on("connected")
@@ -213,6 +215,19 @@ class KnowledgeBot:
             "Daily summary scheduler started (09:00, user=%s)",
             DAILY_SUMMARY_USER_ID,
         )
+
+    def _start_cleanup_scheduler(self):
+        """Schedule daily wiki version cleanup at 03:00."""
+        self.scheduler.add_job(
+            cleanup_old_versions,
+            "cron",
+            hour=3,
+            minute=0,
+            kwargs={"days": 30},
+            id="wiki_cleanup",
+            replace_existing=True,
+        )
+        logger.info("Wiki cleanup scheduler started (03:00, keep 30 days)")
 
     async def _save_turn(self, session_id: int, user_id: str, user_msg: str, asst_msg: str):
         """Persist conversation turn asynchronously (non-blocking)."""
