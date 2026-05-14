@@ -14,12 +14,13 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
+from storage.database import get_connection
 from storage.models import (
     upsert_page,
     update_page_relations,
     get_page_by_title,
     find_similar_pages,
-    save_source_question,
+    save_page_version,
 )
 from storage.wiki_storage import (
     ensure_dirs,
@@ -29,6 +30,7 @@ from storage.wiki_storage import (
     write_page,
     build_frontmatter,
     extract_wikilinks,
+    compute_checksum,
 )
 from storage.wiki_index import rebuild_index, get_index_for_prompt
 
@@ -275,6 +277,29 @@ def extract_to_wiki(
         )
         full_content = frontmatter + "\n\n" + wp.content.strip()
 
+        # Save current disk content as version before overwriting
+        if existing_page_data:
+            disk_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "data", "wiki", file_path,
+            )
+            if os.path.exists(disk_path):
+                with open(disk_path, encoding="utf-8") as _f:
+                    old_raw = _f.read()
+                _pid_row = get_connection().execute(
+                    "SELECT id FROM pages WHERE title = ?", (wp.title,)
+                ).fetchone()
+                if _pid_row:
+                    save_page_version(
+                        page_id=_pid_row["id"],
+                        title=wp.title,
+                        content=old_raw,
+                        checksum=compute_checksum(old_raw),
+                        source_id=source_id,
+                        source_question=source_label.replace("Question: ", ""),
+                    )
+                get_connection().close()
+
         checksum = write_page(file_path, full_content)
 
         pid = upsert_page(
@@ -348,7 +373,6 @@ def store(state: dict) -> dict:
         return {}
 
     source_id = _get_source_id()
-    save_source_question(source_id, state["user_message"])
     source_label = f"Question: {state['user_message']}"
     result = extract_to_wiki(state["answer"], source_id, source_label)
 
