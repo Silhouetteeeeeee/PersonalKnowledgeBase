@@ -181,6 +181,37 @@ def update_page_relations(page_id: int, linked_titles: list[str]) -> None:
         conn.close()
 
 
+# ── Source question helpers ──
+
+def save_source_question(source_id: str, question: str) -> None:
+    """Store the mapping from source_id to the user question that triggered it."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO source_questions (source_id, question) VALUES (?, ?)",
+            (source_id, question),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_source_questions(source_ids: list[str]) -> list[str]:
+    """Look up questions for a list of source IDs."""
+    if not source_ids:
+        return []
+    placeholders = ",".join("?" for _ in source_ids)
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            f"SELECT question FROM source_questions WHERE source_id IN ({placeholders})",
+            source_ids,
+        ).fetchall()
+        return [r[0] for r in rows]
+    finally:
+        conn.close()
+
+
 def find_similar_pages(query: str, threshold: float = 0.6, limit: int = 5) -> list[dict]:
     """Search wiki pages by semantic similarity. Returns list of page dicts with distance."""
     embedding = generate_embedding(query)
