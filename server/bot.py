@@ -9,6 +9,7 @@ import os
 
 from aibot import WSClient, WSClientOptions
 from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET, CLAUDE_CODE_BRIDGE_ENABLED
+from server.config import DAILY_SUMMARY_ENABLED, DAILY_SUMMARY_USER_ID
 from agent.graph import build_graph
 from storage.profile import load_profile
 from memory.session_manager import SessionManager
@@ -17,6 +18,8 @@ from memory.message_history import MessageHistory
 from memory.episodic import EpisodicMemory
 
 from server.claude_bridge import ClaudeCodeBridge
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from server.daily_summary import send_daily_summary
 
 logger = logging.getLogger(__name__)
 graph = build_graph()
@@ -36,7 +39,9 @@ class KnowledgeBot:
             secret=WECOM_BOT_SECRET,
             max_reconnect_attempts=-1,
         ))
+        self.scheduler = AsyncIOScheduler()
         self._setup_handlers()
+        self._start_daily_summary_scheduler()
 
     def _setup_handlers(self):
         @self.client.on("connected")
@@ -183,6 +188,31 @@ class KnowledgeBot:
             logger.info("File processing reply sent to user_id=%s", user_id)
         except Exception:
             logger.exception("Error processing file upload from %s", user_id)
+
+    def _start_daily_summary_scheduler(self):
+        """Schedule daily knowledge summary at 09:00 via APScheduler."""
+        if not DAILY_SUMMARY_ENABLED:
+            logger.info("Daily summary disabled via config")
+            return
+        if not DAILY_SUMMARY_USER_ID:
+            logger.warning("DAILY_SUMMARY_USER_ID not set, daily summary disabled")
+            return
+
+        self.scheduler.add_job(
+            send_daily_summary,
+            "cron",
+            hour=9,
+            minute=0,
+            args=[self.client, DAILY_SUMMARY_USER_ID],
+            misfire_grace_time=300,
+            id="daily_summary",
+            replace_existing=True,
+        )
+        self.scheduler.start()
+        logger.info(
+            "Daily summary scheduler started (09:00, user=%s)",
+            DAILY_SUMMARY_USER_ID,
+        )
 
     async def _save_turn(self, session_id: int, user_id: str, user_msg: str, asst_msg: str):
         """Persist conversation turn asynchronously (non-blocking)."""
