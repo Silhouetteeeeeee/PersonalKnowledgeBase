@@ -66,11 +66,21 @@ def init_db() -> None:
             relation_type TEXT NOT NULL DEFAULT 'wikilink',
             FOREIGN KEY (source_id) REFERENCES pages(id)
         );
-        CREATE TABLE IF NOT EXISTS source_questions (
-            source_id TEXT PRIMARY KEY,
-            question TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        CREATE TABLE IF NOT EXISTS page_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL,
+            version INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            checksum TEXT NOT NULL,
+            source_id TEXT DEFAULT '',
+            source_question TEXT DEFAULT '',
+            change_summary TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (page_id) REFERENCES pages(id),
+            UNIQUE(page_id, version)
         );
+        DROP TABLE IF EXISTS source_questions;
     """)
     conn.commit()
     conn.close()
