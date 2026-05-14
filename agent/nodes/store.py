@@ -252,7 +252,9 @@ def extract_to_wiki(
         file_path = os.path.join("pages", filename)
 
         existing_page_data = read_page(file_path)
-        created_str = existing_page_data.get("created", "") if existing_page_data else now
+        created_str = now
+        if existing_page_data and existing_page_data.get("created"):
+            created_str = existing_page_data["created"]
 
         # Override sources: use real source_id, merge with existing on update
         sources = [source_id]
@@ -304,6 +306,26 @@ def extract_to_wiki(
     }
 
 
+def _fast_skip_check(answer: str) -> tuple[bool, str]:
+    """Fast-path heuristic: skip LLM extraction if answer doesn't warrant a wiki page.
+
+    Uses lightweight rules + vector DB query (no LLM calls).
+    Returns (should_skip, reason).
+    """
+    if len(answer) < 30:
+        return True, "answer too short (<30 chars)"
+
+    if len(answer) < 200:
+        similar = find_similar_pages(answer, threshold=0.75, limit=3)
+        if similar and similar[0].get("distance", 1) >= 0.82:
+            return True, (
+                f"already covered by '{similar[0]['title']}' "
+                f"(dist={similar[0].get('distance', 0):.2f})"
+            )
+
+    return False, ""
+
+
 def store(state: dict) -> dict:
     """Two-step CoT extraction: analyze -> generate -> write."""
     if not state.get("needs_store", True):
@@ -316,6 +338,12 @@ def store(state: dict) -> dict:
 
     if state.get("contradiction_found"):
         logger.info("Skipping store: contradiction detected")
+        return {}
+
+    # Fast-path: skip LLM for trivial or already-covered answers
+    should_skip, skip_reason = _fast_skip_check(state["answer"])
+    if should_skip:
+        logger.info("Fast-path skip store: %s", skip_reason)
         return {}
 
     source_id = _get_source_id()

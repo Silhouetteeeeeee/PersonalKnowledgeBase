@@ -15,7 +15,18 @@
       "Bash(python *)",
       "Bash(/c/Users/dudu/software/miniconda/envs/agent/python *)",
       "Bash(git check-ignore *)",
-      "Bash(/c/Users/dudu/software/miniconda/envs/agent/python.exe *)"
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/python.exe *)",
+      "Bash(pytest tests/test_nodes.py::test_extract_to_wiki_creates_pages -v)",
+      "Read(//c/Users/dudu/software/miniconda/envs/agent/**)",
+      "Read(//c/Users/dudu/**)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/pytest tests/test_nodes.py::test_extract_to_wiki_creates_pages -v)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/pytest -c /dev/null --co -q)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/python -c \"import sqlite3; conn = sqlite3.connect\\('data/knowledge.db'\\); conn.row_factory = sqlite3.Row; r = conn.execute\\('SELECT COUNT\\(*\\) as c FROM pages'\\).fetchone\\(\\); print\\(f'Pages: {r[\\\\\"c\\\\\"]}'\\); r = conn.execute\\('SELECT title, COUNT\\(*\\) as c FROM pages GROUP BY title HAVING c > 1'\\).fetchall\\(\\); [print\\(f\\\\\"  DUPE: {x['title']} \\({x['c']}x\\)\\\\\"\\) for x in r]; r = conn.execute\\('SELECT * FROM file_records'\\).fetchall\\(\\); print\\(f'Files: {len\\(r\\)}'\\); [print\\(f'  {x[\\\\\"file_name\\\\\"]}'\\) for x in r]; conn.close\\(\\)\")",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/pytest --version)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/pytest -x -q --no-header -p no:warnings -c /dev/null -k \"test_compute_hash\" tests/test_file_processor.py)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/python -c \"import sqlite3; print\\('ok'\\)\")",
+      "Bash(git rm *)",
+      "Edit(agent/nodes/store.py)"
     ]
   },
   "enabledPlugins": {
