@@ -172,7 +172,7 @@ async def send_daily_summary(client, user_id: str) -> bool:
         return False
 
     try:
-        client.send_message(user_id, {
+        await client.send_message(user_id, {
             "msgtype": "markdown",
             "markdown": {"content": summary},
         })
