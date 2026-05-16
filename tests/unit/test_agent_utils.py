@@ -2,14 +2,6 @@
 
 from agent.utils.agent_utils import build_context_block
 
-def test_tavily():
-    from tavily import TavilyClient
-
-    tavily_client = TavilyClient(api_key="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")
-    response = tavily_client.extract("https://mp.weixin.qq.com/s/-HYZnOibsST-qjVUtZQZ1g", instructions="总结一下这个界面")
-
-    print(response)
-
 def test_build_context_block_empty():
     result = build_context_block({})
     assert result == ""
