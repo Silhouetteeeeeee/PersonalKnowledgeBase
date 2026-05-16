@@ -4,6 +4,24 @@ import re
 
 logger = logging.getLogger(__name__)
 
+def build_url_context(urls: list[dict], chars: int = -1) -> str:
+    """
+    将urls拼接成md格式
+    :param urls:
+    :param chars:
+    :return:
+    """
+    parts = [f"爬取内容如下（摘要{chars if chars > 0 else '全部'}字符）"]
+    for uc in urls:
+        parts.append("")
+        parts.append(f"### URL: {uc.get('url', '')}")
+        if uc.get("title"):
+            parts.append(f"> 标题：{uc['title']}")
+        content = uc.get("content", "")
+        if content:
+            parts.append(f"全文：")
+            parts.append(f"{content[:chars] if chars > 0 else content}")
+    return "\n".join(parts)
 
 def build_context_block(state: dict) -> str:
     """Build shared context block: user profile, stored knowledge,
@@ -48,15 +66,7 @@ def build_context_block(state: dict) -> str:
     if url_contents:
         parts.append("")
         parts.append("## 用户提供的网页内容")
-        for uc in url_contents:
-            parts.append("")
-            parts.append(f"### URL: {uc.get('url', '')}")
-            if uc.get("title"):
-                parts.append(f"> 标题：{uc['title']}")
-            content = uc.get("content", "")
-            if content:
-                parts.append(f"全文：")
-                parts.append(f"{content}")
+        parts.append(build_url_context(url_contents))
 
         # 纯 URL 消息（无附加文字）→ 追加总结指令
         user_message = state.get("user_message", "")

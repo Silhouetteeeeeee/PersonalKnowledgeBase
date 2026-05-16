@@ -51,10 +51,18 @@ def update_profile(state: dict) -> dict:
         logger.warning("Profile extraction failed: %s", e)
         return {"user_profile": state.get("user_profile", load_profile())}
 
+    updated_fields = [p.field for p in result.profiles if p.should_update]
     for p in result.profiles:
         if p.should_update:
             logger.info("Profile field: %s, value: %s", p.field, p.value)
             profile = update_profile_field(profile, p.field, p.value)
     save_profile(profile, user_id)
 
+    if updated_fields:
+        logger.info("Updated profile fields: %s", updated_fields)
+        return {"user_profile": profile, "logic_chain": [{
+            "node": "update_profile",
+            "action": f"更新 {len(updated_fields)} 个画像字段",
+            "reasoning": f"字段：{', '.join(updated_fields)}",
+        }]}
     return {"user_profile": profile}

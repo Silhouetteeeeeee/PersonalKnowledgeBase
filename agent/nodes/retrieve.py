@@ -21,14 +21,22 @@ def retrieve(state: dict) -> dict:
         pages = find_similar_pages(query, threshold=0.6, limit=5)
     except Exception as e:
         logger.warning("Page semantic search failed: %s", e)
-        pages = []
+        return {"stored_knowledge": [], "logic_chain": [{
+            "node": "retrieve",
+            "action": "向量检索异常",
+            "reasoning": f"检索失败：{e}",
+        }]}
 
     if pages:
         return _retrieve_wiki_pages(pages, query)
 
     # Step 2: No wiki pages found
     logger.info("No wiki pages found, returning empty")
-    return {"stored_knowledge": []}
+    return {"stored_knowledge": [], "logic_chain": [{
+        "node": "retrieve",
+        "action": "未检索到知识",
+        "reasoning": f"向量搜索未找到相关 wiki 页面（threshold=0.6）",
+    }]}
 
 
 def _retrieve_wiki_pages(pages: list[dict], query: str) -> dict:
@@ -72,6 +80,10 @@ def _retrieve_wiki_pages(pages: list[dict], query: str) -> dict:
 
     logger.info("Retrieved %d wiki pages (including %d relation-expanded)",
                 len(results), len(results) - len(pages))
-    return {"stored_knowledge": results}
+    return {"stored_knowledge": results, "logic_chain": [{
+        "node": "retrieve",
+        "action": f"检索到 {len(results)} 个 wiki 页面",
+        "reasoning": f"向量搜索命中 {len(pages)} 个页面，关联扩展了 {len(results) - len(pages)} 个",
+    }]}
 
 

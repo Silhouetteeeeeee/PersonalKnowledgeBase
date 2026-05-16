@@ -46,28 +46,44 @@ def rewrite_query(state: dict) -> dict:
                 candidates.append(first_sentence[:100] if first_sentence else content[:100])
 
         if len(question_only) >= 10:
-            return {"search_query": question_only}
+            return {"search_query": question_only, "logic_chain": [{
+                "node": "rewrite_query",
+                "action": "URL 场景：使用用户问题",
+                "reasoning": f"用户有附加问题（{len(question_only)} 字），直接用作检索查询",
+            }]}
 
         query = "；".join(candidates)[:300]
         logger.info("URL query (no user question): '%s'", query[:60])
-        return {"search_query": query if query else user_message}
+        return {"search_query": query if query else user_message, "logic_chain": [{
+            "node": "rewrite_query",
+            "action": "URL 场景：使用文章标题/首句",
+            "reasoning": f"用户无附加问题，用 URL 内容的标题/首句作为检索查询",
+        }]}
 
     # ── 原有逻辑（无 URL）──
     session_id_raw = state.get("session_id")
     if session_id_raw is None:
         logger.debug("Skipping rewrite: no session_id in state")
-        return {"search_query": user_message}
+        return {"search_query": user_message, "logic_chain": [{
+            "node": "rewrite_query",
+            "action": "跳过改写",
+            "reasoning": "无 session_id",
+        }]}
     session_id = int(session_id_raw)
 
     history = MessageHistory.get_recent(session_id)
     if len(history) < 2:
         logger.debug("Skipping rewrite: only %d history messages", len(history))
-        return {"search_query": user_message}
+        return {"search_query": user_message, "logic_chain": [{
+            "node": "rewrite_query",
+            "action": "跳过改写",
+            "reasoning": f"历史消息不足（{len(history)} 条），无需改写",
+        }]}
 
     lines = []
     for msg in history:
         role = "用户" if msg["role"] == "user" else "助手"
-        content = (msg.get("content") or msg.get("content", ""))[:200]
+        content = (msg.get("content") or "")[:200]
         lines.append(f"{role}：{content}")
     history_text = "\n".join(lines)
 
@@ -80,9 +96,21 @@ def rewrite_query(state: dict) -> dict:
         rewritten = rewritten.strip()
         if not rewritten:
             logger.warning("Rewrite returned empty, falling back to original")
-            return {"search_query": user_message}
+            return {"search_query": user_message, "logic_chain": [{
+                "node": "rewrite_query",
+                "action": "改写返回空",
+                "reasoning": "LLM 改写结果为空，回退到原始用户消息",
+            }]}
         logger.info("Rewrote query: '%s' → '%s'", user_message[:40], rewritten[:60])
-        return {"search_query": rewritten}
+        return {"search_query": rewritten, "logic_chain": [{
+            "node": "rewrite_query",
+            "action": "查询改写",
+            "reasoning": f"原查询：「{user_message}」→ 改写为：「{rewritten}」",
+        }]}
     except Exception as e:
         logger.warning("Rewrite query failed: %s, falling back to original", e)
-        return {"search_query": user_message}
+        return {"search_query": user_message, "logic_chain": [{
+            "node": "rewrite_query",
+            "action": "改写失败",
+            "reasoning": f"LLM 异常：{e}，回退到原始用户消息",
+        }]}

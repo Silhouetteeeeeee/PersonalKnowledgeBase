@@ -2,6 +2,7 @@ import logging
 import re
 
 from server.url_processor import fetch_urls_concurrent
+from agent.utils.agent_utils import build_url_context
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,12 @@ def parse(state: dict) -> dict:
         url_contents = fetch_urls_concurrent(urls)
         result["url_contents"] = url_contents
         logger.info("Fetched %d URLs from message", len(url_contents))
+        result["logic_chain"] = [{
+            "node": "parse",
+            "action": f"提取 {len(urls)} 个 URL",
+            "reasoning": f"从消息中提取了 {len(urls)} 个 URL，成功获取 {len(url_contents)} 个\n"
+                        f"{build_url_context(url_contents, 200)}",
+        }]
     else:
         result["url_contents"] = []
 
