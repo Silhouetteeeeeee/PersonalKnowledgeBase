@@ -72,8 +72,9 @@ def fetch_url_text(url: str) -> dict:
                 client = TavilyClient(api_key=TAVILY_API_KEY)
                 tavily_result = client.extract(url)
                 if tavily_result and tavily_result.get("results"):
-                    content = tavily_result["results"][0].get("content", "")
+                    content = tavily_result["results"][0].get("raw_content", "")
                     if content:
+                        result['title'] = tavily_result["results"][0].get("title", "")
                         result["content"] = clean_content(content)
                         return result
             except Exception as e:
