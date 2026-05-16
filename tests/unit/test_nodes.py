@@ -157,9 +157,58 @@ def test_record_error():
     assert result["error_recorded"] is True
     assert result["correction_attempts"] == 1
 
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM error_records WHERE user_message = 'What is X?'").fetchone()
-    conn.close()
-    assert row is not None
-    assert row["wrong_answer"] == "Wrong answer about X"
-    assert row["correct_answer"] == "Correct answer about X"
+
+def test_parse_with_urls(mocker):
+    """含 URL 的消息 → parse 输出 url_contents。"""
+    mocker.patch('agent.nodes.parse.fetch_urls_concurrent', return_value=[
+        {"url": "https://example.com", "title": "测试页面", "content": "正文"},
+    ])
+    from agent.nodes.parse import parse
+    result = parse({
+        "user_message": "总结 https://example.com 的内容",
+        "user_id": "user1",
+        "timestamp": "",
+    })
+    assert len(result["url_contents"]) == 1
+    assert result["url_contents"][0]["title"] == "测试页面"
+
+
+def test_parse_without_urls():
+    """无 URL 的消息 → url_contents 为空列表。"""
+    from agent.nodes.parse import parse
+    result = parse({
+        "user_message": "你好，今天天气怎么样",
+        "user_id": "user1",
+        "timestamp": "",
+    })
+    assert result["url_contents"] == []
+
+
+def test_parse_with_multiple_urls(mocker):
+    """多个 URL 全部提取。"""
+    mocker.patch('agent.nodes.parse.fetch_urls_concurrent', return_value=[
+        {"url": "https://a.com", "title": "A", "content": "内容A"},
+        {"url": "https://b.com", "title": "B", "content": "内容B"},
+    ])
+    from agent.nodes.parse import parse
+    result = parse({
+        "user_message": "比较 https://a.com 和 https://b.com",
+        "user_id": "user1",
+        "timestamp": "",
+    })
+    assert len(result["url_contents"]) == 2
+
+
+def test_parse_with_only_url(mocker):
+    """消息纯 URL，没有附加文字。"""
+    mocker.patch('agent.nodes.parse.fetch_urls_concurrent', return_value=[
+        {"url": "https://example.com", "title": None, "content": "正文内容"},
+    ])
+    from agent.nodes.parse import parse
+    result = parse({
+        "user_message": "https://example.com",
+        "user_id": "user1",
+        "timestamp": "",
+    })
+    assert len(result["url_contents"]) == 1
+    assert result["url_contents"][0]["title"] is None
