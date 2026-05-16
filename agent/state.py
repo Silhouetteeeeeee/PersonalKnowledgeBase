@@ -42,3 +42,6 @@ class AgentState(TypedDict):
     session_id: str
     message_history: list[dict]
     episodic_memories: list[str]
+
+    # URL fetching
+    url_contents: list[dict]  # URL 抓取结果列表，每个元素 {"url", "title", "content"}

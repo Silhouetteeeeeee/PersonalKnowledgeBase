@@ -102,6 +102,7 @@ class KnowledgeBot:
                     "answer": "",
                     "final_response": "",
                     "reasoning_log_path": "",
+                    "url_contents": [],
                     "contradiction_found": False,
                     "contradiction_details": "",
                     "search_time": 0,
@@ -253,7 +254,7 @@ def run_bot():
 
 # ── 文件处理（同步，在独立线程中执行）──
 
-MAX_FILE_CHARS = 8000
+MAX_FILE_CHARS = 20000
 
 
 def _process_and_store_file(file_bytes: bytes, filename: str, user_id: str) -> str:
