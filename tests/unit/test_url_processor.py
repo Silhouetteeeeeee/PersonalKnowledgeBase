@@ -49,6 +49,7 @@ def test_clean_content_removes_image_variants():
 
 def test_fetch_url_text_static_success(mocker):
     """静态页面提取成功，trafilatura 返回内容 > 200 chars。"""
+    mocker.patch('requests.get')
     mocker.patch('trafilatura.fetch_url', return_value='<html><body><p>静态内容正文...（超过200字）'
                                                        '</p></body></html>')
     mocker.patch('trafilatura.extract', return_value='静态内容正文。' * 50)
