@@ -11,7 +11,6 @@ from agent.nodes.search_web import search_web_node
 from agent.nodes.regenerate import regenerate
 from agent.nodes.reflect import reflect
 from agent.nodes.record_error import record_error
-from agent.nodes.store import store
 from agent.nodes.respond import respond
 from agent.nodes.update_profile import update_profile
 
@@ -25,8 +24,8 @@ def fact_check_router(state: dict) -> str:
     if state.get("contradiction_found") and state.get("contradiction_details"):
         logger.info("Router: contradiction detected → reflect")
         return "reflect"
-    logger.info("Router: no contradiction → store")
-    return "store"
+    logger.info("Router: no contradiction → respond")
+    return "respond"
 
 
 def reflect_router(state: dict) -> str:
@@ -59,7 +58,7 @@ def build_graph() -> StateGraph:
         顺序执行: parse → rewrite_query → retrieve → classify_and_answer
         classify_and_answer 后直接到 fact_check（搜索在节点内部完成）
         fact_check 后如果发现矛盾 → reflect → 修正循环
-        否则 → store → respond
+        否则 → respond（store 在图外异步执行）
         修正循环最多 2 次，之后到 respond
         :return: StateGraph 状态图
     """
@@ -73,7 +72,6 @@ def build_graph() -> StateGraph:
     builder.add_node("fact_check", fact_check)
     builder.add_node("search_web", search_web_node)
     builder.add_node("regenerate", regenerate)
-    builder.add_node("store", store)
     builder.add_node("respond", respond)
 
     # Reflection nodes
@@ -94,11 +92,11 @@ def build_graph() -> StateGraph:
     builder.add_edge("search_web", "regenerate")
     builder.add_edge("regenerate", "fact_check")
 
-    # fact_check → [reflect | store]
+    # fact_check → [reflect | respond]
     builder.add_conditional_edges(
         "fact_check",
         fact_check_router,
-        {"reflect": "reflect", "store": "store"},
+        {"reflect": "reflect", "respond": "respond"},
     )
 
     # reflect → [record_error | respond]
@@ -114,15 +112,12 @@ def build_graph() -> StateGraph:
     # record_error → search_web (always force search for correction)
     builder.add_edge("record_error", "search_web")
 
-    # store → respond
-    builder.add_edge("store", "respond")
-
     compiled = builder.compile()
 
     logger.info(
         "Graph built: parse → rewrite_query → retrieve → classify_and_answer → "
         "fact_check → "
-        "[reflect→record_error|store] → respond"
+        "[reflect→record_error|respond]"
     )
 
     return compiled

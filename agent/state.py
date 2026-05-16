@@ -16,7 +16,6 @@ class AgentState(TypedDict):
     wiki_page_ids: list[int]
     answer: str
     final_response: str
-    reasoning_log_path: str
     contradiction_found: bool
     contradiction_details: str
     search_time: int

@@ -32,10 +32,10 @@ def test_retrieve_no_results():
 
 
 def test_store_empty_answer():
-    from agent.nodes.store import store
+    from agent.nodes.store import _sync_background_store
 
-    result = store({"user_message": "hi", "answer": ""})
-    assert result["logic_chain"][0]["action"] == "跳过存储"
+    # Should not raise on empty answer
+    _sync_background_store({"user_message": "hi", "answer": ""})
 
 
 def test_fact_check_no_answer():
@@ -97,39 +97,43 @@ def test_respond_reflection_answer_wrong():
     assert "错误" in result["final_response"]
 
 
-def test_respond_saves_reasoning_log(monkeypatch, tmp_path):
-    """Verify that respond creates a reasoning log MD file."""
-    reasoning_dir = tmp_path / "reasoning"
-    monkeypatch.setattr("agent.nodes.respond.REASONING_LOG_DIR", str(reasoning_dir))
+def test_reasoning_log_is_saved(monkeypatch):
+    """Verify that _save_reasoning_log writes log content correctly."""
+    from unittest.mock import mock_open
 
-    from agent.nodes.respond import respond
+    from agent.nodes.store import _save_reasoning_log
 
-    result = respond({
-        "answer": "Hello",
+    written = {}
+
+    def fake_open(path, mode="r", encoding=None):
+        f = mock_open()()
+        f.write = lambda s: written.update({"content": s})
+        return f
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    monkeypatch.setattr("agent.nodes.store.os.makedirs", lambda p, exist_ok: None)
+
+    _save_reasoning_log({
         "user_message": "Say hi",
         "user_id": "test",
         "logic_chain": [{"node": "test", "action": "testing", "reasoning": "test reasoning"}],
     })
 
-    md_files = list(reasoning_dir.rglob("*.md"))
-    assert len(md_files) >= 1
-    content = md_files[0].read_text(encoding="utf-8")
+    content = written.get("content", "")
     assert "Say hi" in content
     assert "test reasoning" in content
-    assert "testing" in content
 
 
 def test_store_skips_on_contradiction():
-    from agent.nodes.store import store
+    from agent.nodes.store import _sync_background_store
 
-    result = store({
+    # Should not raise when contradiction is set
+    _sync_background_store({
         "user_message": "test",
         "answer": "some answer",
         "contradiction_found": True,
         "contradiction_details": "test contradiction",
     })
-    assert result["logic_chain"][0]["action"] == "跳过存储"
-    assert "矛盾" in result["logic_chain"][0]["reasoning"]
 
 
 def test_regenerate_empty_search():

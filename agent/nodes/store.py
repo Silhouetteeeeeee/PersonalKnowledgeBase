@@ -7,6 +7,7 @@ Step 2 (Generate): LLM reads analysis + existing pages, outputs wiki page conten
   System writes to disk, updates SQLite index, rebuilds index.md.
 """
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -355,65 +356,96 @@ def _fast_skip_check(answer: str) -> tuple[bool, str]:
     return False, ""
 
 
-def store(state: dict) -> dict:
-    """Two-step CoT extraction: analyze -> generate -> write."""
+async def run_background_store(state: dict) -> None:
+    """Async entry point for background persistence.
+
+    Saves reasoning log + optionally extracts wiki pages.
+    Called from bot.py after graph.invoke() completes, non-blocking.
+    """
+    await asyncio.to_thread(_sync_background_store, state)
+
+
+def _sync_background_store(state: dict) -> None:
+    """Save reasoning log + optionally extract wiki pages.
+
+    Runs inside asyncio.to_thread — must not touch async code.
+    """
+    # Step 1: Save reasoning log (always)
+    _save_reasoning_log(state)
+
+    # Step 2: Wiki extraction (conditional)
     if not state.get("needs_store", True):
-        logger.info("Skipping store: needs_store=False")
-        return {"logic_chain": [{
-            "node": "store",
-            "action": "跳过存储",
-            "reasoning": "needs_store=False，该问答无需存储为知识",
-        }]}
-
+        logger.info("Background store: needs_store=False, skipping wiki extraction")
+        return
     if not state.get("answer"):
-        logger.info("Skipping store: no answer")
-        return {"logic_chain": [{
-            "node": "store",
-            "action": "跳过存储",
-            "reasoning": "无回答内容",
-        }]}
-
+        logger.info("Background store: no answer, skipping wiki extraction")
+        return
     if state.get("contradiction_found"):
-        logger.info("Skipping store: contradiction detected")
-        return {"logic_chain": [{
-            "node": "store",
-            "action": "跳过存储",
-            "reasoning": f"检测到矛盾：{state.get('contradiction_details', '')}",
-        }]}
+        logger.info("Background store: contradiction detected, skipping wiki extraction")
+        return
 
-    # Fast-path: skip LLM for trivial or already-covered answers
     should_skip, skip_reason = _fast_skip_check(state["answer"])
     if should_skip:
-        logger.info("Fast-path skip store: %s", skip_reason)
-        return {"logic_chain": [{
-            "node": "store",
-            "action": "快速跳过存储",
-            "reasoning": skip_reason,
-        }]}
+        logger.info("Background store: fast-path skip (%s)", skip_reason)
+        return
 
     user_id = state.get("user_id", "unknown")
     source_id = _get_source_id(user_id)
     source_label = f"Question: {state['user_message']}"
     result = extract_to_wiki(state["answer"], source_id, source_label)
+    if result.get("page_ids"):
+        logger.info("Background store: saved %d wiki pages", len(result["page_ids"]))
 
-    if not result.get("page_ids"):
-        return {"logic_chain": [{
-            "node": "store",
-            "action": "存储失败",
-            "reasoning": "LLM 未能从回答中提取出 wiki 页面",
-        }]}
 
-    # Pre-determine reasoning log path so respond writes to the same file
-    safe_user = "".join(c if c.isalnum() else "_" for c in user_id)
-    *_, date_str, filename = source_id.split("/")
-    reasoning_log_path = os.path.join(
+def _save_reasoning_log(state: dict) -> None:
+    """Save the logic_chain to a local MD file."""
+    now = datetime.now()
+    user_id = state.get("user_id", "unknown")
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H%M%S")
+    log_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "data", "reasoning", date_str, filename,
+        "data", "reasoning", date_str,
     )
+    os.makedirs(log_dir, exist_ok=True)
+    safe_user = "".join(c if c.isalnum() else "_" for c in user_id)
+    filename = f"{safe_user}_{time_str}.md"
+    file_path = os.path.join(log_dir, filename)
 
-    return {
-        "stored_knowledge_ids": result["page_ids"],
-        "wiki_page_ids": result["page_ids"],
-        "reasoning_log_path": reasoning_log_path,
-        "logic_chain": result.get("logic_chain", []),
-    }
+    lines = [
+        f"# 推理链路 - {now.strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "## 用户消息",
+        state.get("user_message", ""),
+        "",
+    ]
+
+    if state.get("contradiction_found"):
+        lines.append(f"> ⚠️ 本次检测到矛盾：{state.get('contradiction_details', '')}")
+        if state.get("reflection_result"):
+            lines.append(f"> 反思结论：{state['reflection_result']}")
+            lines.append(f"> 反思推理：{state.get('reflection_reasoning', '')}")
+        lines.append("")
+
+    chain = state.get("logic_chain", [])
+    for step in chain:
+        node = step.get("node", "unknown")
+        action = step.get("action", "")
+        reasoning = step.get("reasoning", "")
+        lines.append(f"## {node} — {action}")
+        if reasoning:
+            lines.append(f"\n**思考过程：**\n{reasoning}")
+        lines.append("")
+
+    if state.get("error_recorded"):
+        lines.append("## 错误记录\n本次回答中的错误已被记录，将用于后续改进。")
+
+    lines.append("---")
+    lines.append(f"_生成时间: {now.strftime('%Y-%m-%d %H:%M:%S')}_")
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        logger.info("Reasoning log saved to %s", file_path)
+    except Exception as e:
+        logger.error("Failed to save reasoning log: %s", e)

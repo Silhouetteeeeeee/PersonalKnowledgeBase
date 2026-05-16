@@ -11,6 +11,7 @@ from aibot import WSClient, WSClientOptions
 from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET, CLAUDE_CODE_BRIDGE_ENABLED
 from server.config import DAILY_SUMMARY_ENABLED, DAILY_SUMMARY_USER_ID
 from agent.graph import build_graph
+from agent.nodes.store import run_background_store
 from storage.profile import load_profile
 from memory.session_manager import SessionManager
 from memory.context_builder import ContextBuilder
@@ -101,7 +102,6 @@ class KnowledgeBot:
                     "stored_knowledge_ids": [],
                     "answer": "",
                     "final_response": "",
-                    "reasoning_log_path": "",
                     "url_contents": [],
                     "contradiction_found": False,
                     "contradiction_details": "",
@@ -132,6 +132,7 @@ class KnowledgeBot:
                 asyncio.create_task(self._save_turn(
                     session["id"], user_id, content, answer_text,
                 ))
+                asyncio.create_task(run_background_store(result))
             except Exception:
                 logger.exception("Error handling message from %s", user_id)
 
