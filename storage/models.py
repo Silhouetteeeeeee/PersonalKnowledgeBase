@@ -170,7 +170,7 @@ def update_page_relations(page_id: int, linked_titles: list[str]) -> None:
             conn.execute(
                 """INSERT INTO page_relations (source_id, target_title)
                    VALUES (?, ?)""",
-                (page_id, link_title),
+                (page_id, link_title.lower().strip()),
             )
         conn.commit()
         logger.info("Updated %d relations for page id=%d", len(linked_titles), page_id)
@@ -305,12 +305,12 @@ def get_related_pages(page_id: int) -> list[dict]:
     try:
         rows = conn.execute(
             """SELECT p.* FROM pages p
-               JOIN page_relations r ON r.target_title = p.title
+               JOIN page_relations r ON r.target_title = p.title COLLATE NOCASE
                WHERE r.source_id = ? AND p.status = 'active'
                UNION
                SELECT p.* FROM pages p
                JOIN page_relations r ON r.source_id = p.id
-               WHERE r.target_title = (SELECT title FROM pages WHERE id = ?)
+               WHERE r.target_title = (SELECT title FROM pages WHERE id = ?) COLLATE NOCASE
                  AND p.status = 'active'
                """,
             (page_id, page_id),
@@ -335,11 +335,11 @@ def get_all_pages_index() -> list[dict]:
 
 
 def get_page_by_title(title: str) -> Optional[dict]:
-    """Look up a page by exact title match."""
+    """Look up a page by title (case-insensitive)."""
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT * FROM pages WHERE title = ? AND status = 'active'",
+            "SELECT * FROM pages WHERE title = ? COLLATE NOCASE AND status = 'active'",
             (title,),
         ).fetchone()
         return _page_row_to_dict(row) if row else None

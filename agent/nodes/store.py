@@ -191,7 +191,7 @@ def _read_existing_pages(actions: list[AnalysisAction]) -> list[dict]:
     for a in actions:
         if a.action != "update" or not a.target:
             continue
-        page = get_page_by_title(a.target)
+        page = get_page_by_title(a.target.lower().strip())
         if page:
             file_page = read_page(page["file_path"])
             if file_page:
@@ -229,7 +229,7 @@ def extract_to_wiki(
     # ── Step 1: Analysis ──
     logger.info("Step 1: Analyzing content for wiki extraction...")
     analysis_prompt = _build_analysis_prompt(source_text, source_label, similar_pages)
-    analysis = LLM.generate_structured(analysis_prompt, AnalysisOutput, use_language=False)
+    analysis = LLM.generate_structured(analysis_prompt, AnalysisOutput, use_language=False, model="deepseek-v4-pro")
     if analysis is None:
         logger.error("Analysis LLM returned None")
         return {}
@@ -250,6 +250,7 @@ def extract_to_wiki(
     saved_ids = []
 
     for wp in batch.pages:
+        wp.title = wp.title.lower().strip()
         tags = wp.tags
         filename = title_to_filename(wp.title)
         file_path = os.path.join("pages", filename)

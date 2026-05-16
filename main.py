@@ -11,6 +11,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+# Suppress verbose third-party library logs (embedding model HTTP checks, etc.)
+for _lib in ("httpx", "sentence_transformers", "fastembed", "httpcore"):
+    logging.getLogger(_lib).setLevel(logging.WARNING)
+
 if __name__ == "__main__":
     from storage.database import init_db
     init_db()
