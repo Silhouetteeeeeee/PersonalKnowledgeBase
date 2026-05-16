@@ -359,21 +359,37 @@ def store(state: dict) -> dict:
     """Two-step CoT extraction: analyze -> generate -> write."""
     if not state.get("needs_store", True):
         logger.info("Skipping store: needs_store=False")
-        return {}
+        return {"logic_chain": [{
+            "node": "store",
+            "action": "跳过存储",
+            "reasoning": "needs_store=False，该问答无需存储为知识",
+        }]}
 
     if not state.get("answer"):
         logger.info("Skipping store: no answer")
-        return {}
+        return {"logic_chain": [{
+            "node": "store",
+            "action": "跳过存储",
+            "reasoning": "无回答内容",
+        }]}
 
     if state.get("contradiction_found"):
         logger.info("Skipping store: contradiction detected")
-        return {}
+        return {"logic_chain": [{
+            "node": "store",
+            "action": "跳过存储",
+            "reasoning": f"检测到矛盾：{state.get('contradiction_details', '')}",
+        }]}
 
     # Fast-path: skip LLM for trivial or already-covered answers
     should_skip, skip_reason = _fast_skip_check(state["answer"])
     if should_skip:
         logger.info("Fast-path skip store: %s", skip_reason)
-        return {}
+        return {"logic_chain": [{
+            "node": "store",
+            "action": "快速跳过存储",
+            "reasoning": skip_reason,
+        }]}
 
     user_id = state.get("user_id", "unknown")
     source_id = _get_source_id(user_id)
@@ -381,7 +397,11 @@ def store(state: dict) -> dict:
     result = extract_to_wiki(state["answer"], source_id, source_label)
 
     if not result.get("page_ids"):
-        return {}
+        return {"logic_chain": [{
+            "node": "store",
+            "action": "存储失败",
+            "reasoning": "LLM 未能从回答中提取出 wiki 页面",
+        }]}
 
     # Pre-determine reasoning log path so respond writes to the same file
     safe_user = "".join(c if c.isalnum() else "_" for c in user_id)

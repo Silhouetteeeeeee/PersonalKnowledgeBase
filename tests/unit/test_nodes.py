@@ -35,7 +35,7 @@ def test_store_empty_answer():
     from agent.nodes.store import store
 
     result = store({"user_message": "hi", "answer": ""})
-    assert result == {}
+    assert result["logic_chain"][0]["action"] == "跳过存储"
 
 
 def test_fact_check_no_answer():
@@ -128,7 +128,8 @@ def test_store_skips_on_contradiction():
         "contradiction_found": True,
         "contradiction_details": "test contradiction",
     })
-    assert result == {}
+    assert result["logic_chain"][0]["action"] == "跳过存储"
+    assert "矛盾" in result["logic_chain"][0]["reasoning"]
 
 
 def test_regenerate_empty_search():

@@ -78,7 +78,7 @@ def test_store_returns_stored_ids():
         "user_message": "What is Redis?",
         "answer": "Redis is an in-memory data store.",
     })
-    if result:
+    if result.get("stored_knowledge_ids"):
         assert isinstance(result.get("stored_knowledge_ids"), list)
 
 
