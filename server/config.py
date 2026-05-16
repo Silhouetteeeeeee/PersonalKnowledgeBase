@@ -29,3 +29,6 @@ CLAUDE_CODE_BRIDGE_ENABLED = os.getenv("CLAUDE_CODE_BRIDGE_ENABLED", "false").lo
 DAILY_SUMMARY_ENABLED = os.getenv("DAILY_SUMMARY_ENABLED", "true").lower() == "true"
 DAILY_SUMMARY_USER_ID = os.getenv("DAILY_SUMMARY_USER_ID", "")
 DAILY_SUMMARY_TIME = os.getenv("DAILY_SUMMARY_TIME", "09:00")
+
+# URL fetching
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
