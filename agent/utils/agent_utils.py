@@ -1,5 +1,6 @@
 import time
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,34 @@ def build_context_block(state: dict) -> str:
             parts.append("")
             parts.append("## 历史相关记忆")
             parts.extend(state["episodic_memories"] if all(isinstance(m, str) for m in state["episodic_memories"]) else [str(m) for m in state["episodic_memories"]])
+
+    # ── URL 网页内容 ──
+    url_contents = state.get("url_contents", [])
+    if url_contents:
+        parts.append("")
+        parts.append("## 用户提供的网页内容")
+        for uc in url_contents:
+            parts.append("")
+            parts.append(f"### URL: {uc.get('url', '')}")
+            if uc.get("title"):
+                parts.append(f"> 标题：{uc['title']}")
+            content = uc.get("content", "")
+            if content:
+                preview = content[:500]
+                if len(content) > 500:
+                    preview += "..."
+                parts.append(f"> 前 500 字摘要：")
+                parts.append(f"> {preview}")
+                parts.append("")
+                parts.append(f"全文：")
+                parts.append(f"{content}")
+
+        # 纯 URL 消息（无附加文字）→ 追加总结指令
+        user_message = state.get("user_message", "")
+        url_pattern = re.compile(r'https?://[^\s]+')
+        if not url_pattern.sub('', user_message).strip():
+            parts.append("")
+            parts.append("用户只发送了网页链接，没有附加问题。请直接总结这篇文章的核心内容，用中文输出。")
 
     return "\n".join(parts)
 
