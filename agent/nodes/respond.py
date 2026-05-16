@@ -10,8 +10,7 @@ REASONING_LOG_DIR = os.path.join(
     "data", "reasoning",
 )
 
-
-def _save_reasoning_log(state: dict) -> str:
+async def _save_reasoning_log(state: dict) -> str:
     """Save the logic_chain to a local MD file and return the file path.
 
     Uses the pre-determined path from the store node (if available)
@@ -107,4 +106,4 @@ def respond(state: dict) -> dict:
     log_path = _save_reasoning_log(state)
 
     logger.info("Responding with answer (len=%d): '%s'", len(answer), answer[:80])
-    return {"final_response": answer, "reasoning_log_path": log_path}
+    return {"final_response": answer}
