@@ -1,5 +1,6 @@
 """Rewrite user query with conversation context for standalone retrieval."""
 import logging
+import re
 
 from memory.message_history import MessageHistory
 from agent.utils.llm import LLM
@@ -28,6 +29,30 @@ def rewrite_query(state: dict) -> dict:
     - LLM call fails or returns empty
     """
     user_message = state["user_message"]
+    url_contents = state.get("url_contents", [])
+
+    # ── URL 场景检索策略 ──
+    if url_contents:
+        url_pattern = re.compile(r'https?://[^\s]+')
+        question_only = url_pattern.sub('', user_message).strip()
+
+        candidates = []
+        for uc in url_contents:
+            if uc.get("title"):
+                candidates.append(uc["title"])
+            else:
+                content = uc.get("content", "")
+                first_sentence = re.split(r'[。.!?]', content)[0].strip()
+                candidates.append(first_sentence[:100] if first_sentence else content[:100])
+
+        if len(question_only) >= 10:
+            return {"search_query": question_only}
+
+        query = "；".join(candidates)[:300]
+        logger.info("URL query (no user question): '%s'", query[:60])
+        return {"search_query": query if query else user_message}
+
+    # ── 原有逻辑（无 URL）──
     session_id_raw = state.get("session_id")
     if session_id_raw is None:
         logger.debug("Skipping rewrite: no session_id in state")
