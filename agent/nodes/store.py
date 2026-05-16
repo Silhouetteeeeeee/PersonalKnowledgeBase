@@ -180,9 +180,11 @@ def _build_generation_prompt(
     )
 
 
-def _get_source_id() -> str:
-    """Generate a source conversation ID from timestamp."""
-    return f"conv_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+def _get_source_id(user_id: str) -> str:
+    """Generate a source ID that directly references the reasoning log file path."""
+    now = datetime.now()
+    safe_user = "".join(c if c.isalnum() else "_" for c in user_id)
+    return f"reasoning/{now.strftime('%Y-%m-%d')}/{safe_user}_{now.strftime('%H%M%S')}.md"
 
 
 def _read_existing_pages(actions: list[AnalysisAction]) -> list[dict]:
@@ -373,15 +375,25 @@ def store(state: dict) -> dict:
         logger.info("Fast-path skip store: %s", skip_reason)
         return {}
 
-    source_id = _get_source_id()
+    user_id = state.get("user_id", "unknown")
+    source_id = _get_source_id(user_id)
     source_label = f"Question: {state['user_message']}"
     result = extract_to_wiki(state["answer"], source_id, source_label)
 
     if not result.get("page_ids"):
         return {}
 
+    # Pre-determine reasoning log path so respond writes to the same file
+    safe_user = "".join(c if c.isalnum() else "_" for c in user_id)
+    *_, date_str, filename = source_id.split("/")
+    reasoning_log_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "data", "reasoning", date_str, filename,
+    )
+
     return {
         "stored_knowledge_ids": result["page_ids"],
         "wiki_page_ids": result["page_ids"],
+        "reasoning_log_path": reasoning_log_path,
         "logic_chain": result.get("logic_chain", []),
     }

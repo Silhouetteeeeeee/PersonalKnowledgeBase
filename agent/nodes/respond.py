@@ -12,18 +12,26 @@ REASONING_LOG_DIR = os.path.join(
 
 
 def _save_reasoning_log(state: dict) -> str:
-    """Save the logic_chain to a local MD file and return the file path."""
-    user_id = state.get("user_id", "unknown")
-    now = datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
-    time_str = now.strftime("%H%M%S")
-    log_dir = os.path.join(REASONING_LOG_DIR, date_str)
-    os.makedirs(log_dir, exist_ok=True)
+    """Save the logic_chain to a local MD file and return the file path.
 
-    # Sanitize user_id for filename
-    safe_user = "".join(c if c.isalnum() else "_" for c in user_id)
-    filename = f"{safe_user}_{time_str}.md"
-    file_path = os.path.join(log_dir, filename)
+    Uses the pre-determined path from the store node (if available)
+    so that source_id on wiki pages directly matches the reasoning log.
+    Falls back to generating a fresh path when store didn't run.
+    """
+    now = datetime.now()
+    pre_path = state.get("reasoning_log_path", "")
+    if pre_path:
+        os.makedirs(os.path.dirname(pre_path), exist_ok=True)
+        file_path = pre_path
+    else:
+        user_id = state.get("user_id", "unknown")
+        date_str = now.strftime("%Y-%m-%d")
+        time_str = now.strftime("%H%M%S")
+        log_dir = os.path.join(REASONING_LOG_DIR, date_str)
+        os.makedirs(log_dir, exist_ok=True)
+        safe_user = "".join(c if c.isalnum() else "_" for c in user_id)
+        filename = f"{safe_user}_{time_str}.md"
+        file_path = os.path.join(log_dir, filename)
 
     lines = [
         f"# 推理链路 - {now.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -96,7 +104,7 @@ def respond(state: dict) -> dict:
             logger.info("Appended generic contradiction warning (no reflection)")
 
     # Save reasoning log to MD file
-    _save_reasoning_log(state)
+    log_path = _save_reasoning_log(state)
 
     logger.info("Responding with answer (len=%d): '%s'", len(answer), answer[:80])
-    return {"final_response": answer}
+    return {"final_response": answer, "reasoning_log_path": log_path}

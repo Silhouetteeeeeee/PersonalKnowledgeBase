@@ -26,7 +26,17 @@
       "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/pytest -x -q --no-header -p no:warnings -c /dev/null -k \"test_compute_hash\" tests/test_file_processor.py)",
       "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/python -c \"import sqlite3; print\\('ok'\\)\")",
       "Bash(git rm *)",
-      "Edit(agent/nodes/store.py)"
+      "Edit(agent/nodes/store.py)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/Scripts/pytest tests/unit/ -v --tb=short 2>&1)",
+      "Bash(git *)",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(pytest tests/unit/ -v --tb=short)",
+      "Bash(wmic process *)",
+      "Bash(pytest tests/unit/test_url_processor.py -v --tb=short)",
+      "Bash(pip list *)",
+      "Bash(conda info *)",
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/bin/python -m pytest tests/unit/test_url_processor.py -v)"
     ]
   },
   "enabledPlugins": {
