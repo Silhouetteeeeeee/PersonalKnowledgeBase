@@ -9,6 +9,7 @@ WECOM_BOT_SECRET = os.getenv("WECOM_BOT_SECRET", "")
 
 # LLM configuration
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
+LLM_APIKEY = os.getenv("DEEPSEEK_API_KEY", "")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 
 # Task-specific model overrides. Set task → model_name to use a different

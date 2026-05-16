@@ -229,7 +229,7 @@ def extract_to_wiki(
     # ── Step 1: Analysis ──
     logger.info("Step 1: Analyzing content for wiki extraction...")
     analysis_prompt = _build_analysis_prompt(source_text, source_label, similar_pages)
-    analysis = LLM.generate_structured(analysis_prompt, AnalysisOutput, use_language=False, model="deepseek-v4-pro")
+    analysis = LLM.generate_structured(analysis_prompt, AnalysisOutput, use_language=False)
     if analysis is None:
         logger.error("Analysis LLM returned None")
         return {}
