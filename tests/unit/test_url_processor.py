@@ -61,8 +61,10 @@ def test_fetch_url_text_static_success(mocker):
 
 def test_fetch_url_text_fallback_to_tavily(mocker):
     """trafilatura 提取内容不足 200 chars → 降级到 tavily。"""
+    mocker.patch('requests.get')
     mocker.patch('trafilatura.fetch_url', return_value='<html></html>')
     mocker.patch('trafilatura.extract', return_value='短内容')
+    mocker.patch('server.url_processor.TAVILY_API_KEY', 'fake-key')
     mock_tavily = mocker.patch('server.url_processor.TavilyClient')
     mock_tavily.return_value.extract.return_value = {
         'results': [{'content': 'Tavily 提取的长篇正文内容' * 50}]
@@ -77,6 +79,7 @@ def test_fetch_url_text_tavily_returns_none(mocker):
     """trafilatura 和 tavily 都失败时返回错误信息。"""
     mocker.patch('trafilatura.fetch_url', return_value=None)
     mocker.patch('trafilatura.extract', return_value='')
+    mocker.patch('server.url_processor.TAVILY_API_KEY', 'fake-key')
     mock_tavily = mocker.patch('server.url_processor.TavilyClient')
     mock_tavily.return_value.extract.return_value = {'results': []}
     mock_resp = mocker.Mock()
@@ -105,7 +108,9 @@ def test_fetch_url_text_extracts_title(mocker):
 
 def test_fetch_url_text_timeout(mocker):
     """网络超时场景。"""
+    mocker.patch('requests.get')
     mocker.patch('trafilatura.fetch_url', side_effect=Exception('Timeout'))
+    mocker.patch('server.url_processor.TAVILY_API_KEY', '')
     from server.url_processor import fetch_url_text
     result = fetch_url_text('https://example.com')
     assert result['content'] == '[抓取失败]'

@@ -42,7 +42,7 @@ def fetch_url_text(url: str) -> dict:
     try:
         # 尝试提取 title
         try:
-            resp = requests.get(url, timeout=15, headers={
+            resp = requests.get(url, timeout=30, headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
