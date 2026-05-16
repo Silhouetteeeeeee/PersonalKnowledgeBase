@@ -1,4 +1,5 @@
 import logging
+import re
 
 from langgraph.prebuilt import ToolRuntime
 from pydantic import BaseModel, Field
@@ -101,6 +102,26 @@ def classify_and_answer(state: dict) -> dict:
         "Classifying question (stored_knowledge=%d)",
         len(state.get("stored_knowledge", [])),
     )
+
+    # ── URL 全部抓取失败 → 跳过 Agent 直接返回 ──
+    url_contents = state.get("url_contents", [])
+    user_message = state.get("user_message", "")
+    if url_contents and all(
+        uc.get("content", "") == "[抓取失败]" for uc in url_contents
+    ) and not re.sub(r'https?://[^\s]+', '', user_message).strip():
+        failed = [uc.get("url", "") for uc in url_contents]
+        logger.warning("All %d URLs failed to fetch, skipping agent", len(failed))
+        return {
+            "answer": f"抱歉，以下网页内容抓取失败：\n" + "\n".join(f"- {u}" for u in failed) + "\n\n请检查链接是否可访问或稍后重试。",
+            "confidence": 1.0,
+            "needs_store": False,
+            "logic_chain": [{
+                "node": "classify_and_answer",
+                "action": "URL 全部抓取失败",
+                "reasoning": f"{len(url_contents)} 个 URL 全部抓取失败，跳过 Agent 直接返回",
+            }],
+        }
+
     agent = create_react_agent(
         model=LLM.get_model(),
         tools=[web_search_tool],
