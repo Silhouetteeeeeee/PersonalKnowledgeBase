@@ -55,12 +55,6 @@ def build_context_block(state: dict) -> str:
                 parts.append(f"> 标题：{uc['title']}")
             content = uc.get("content", "")
             if content:
-                preview = content[:500]
-                if len(content) > 500:
-                    preview += "..."
-                parts.append(f"> 前 500 字摘要：")
-                parts.append(f"> {preview}")
-                parts.append("")
                 parts.append(f"全文：")
                 parts.append(f"{content}")
 
