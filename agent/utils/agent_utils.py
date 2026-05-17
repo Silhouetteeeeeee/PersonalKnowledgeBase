@@ -2,9 +2,11 @@ import time
 import logging
 import re
 
+from agent.models.value_objects import UrlContent
+
 logger = logging.getLogger(__name__)
 
-def build_url_context(urls: list[dict], chars: int = -1) -> str:
+def build_url_context(urls: list[UrlContent], chars: int = -1) -> str:
     """
     将urls拼接成md格式
     :param urls:
@@ -14,10 +16,10 @@ def build_url_context(urls: list[dict], chars: int = -1) -> str:
     parts = [f"爬取内容如下（摘要{chars if chars > 0 else '全部'}字符）"]
     for uc in urls:
         parts.append("")
-        parts.append(f"### URL: {uc.get('url', '')}")
-        if uc.get("title"):
-            parts.append(f"> 标题：{uc['title']}")
-        content = uc.get("content", "")
+        parts.append(f"### URL: {uc.url}")
+        if uc.title:
+            parts.append(f"> 标题：{uc.title}")
+        content = uc.content
         if content:
             parts.append(f"全文：")
             parts.append(f"{content[:chars] if chars > 0 else content}")

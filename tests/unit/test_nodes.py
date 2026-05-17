@@ -176,7 +176,7 @@ def test_parse_with_urls(mocker):
         "timestamp": "",
     })
     assert len(result["url_contents"]) == 1
-    assert result["url_contents"][0]["title"] == "测试页面"
+    assert result["url_contents"][0].title == "测试页面"
 
 
 def test_parse_without_urls():
@@ -217,4 +217,4 @@ def test_parse_with_only_url(mocker):
         "timestamp": "",
     })
     assert len(result["url_contents"]) == 1
-    assert result["url_contents"][0]["title"] is None
+    assert result["url_contents"][0].title is None

@@ -7,6 +7,7 @@ import trafilatura
 from tavily import TavilyClient
 
 from server.config import TAVILY_API_KEY
+from agent.models.value_objects import UrlContent
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +33,13 @@ def clean_content(raw: str) -> str:
 # ── Single URL Fetch ─────────────────────────────────────────────────────────
 
 
-def fetch_url_text(url: str) -> dict:
+def fetch_url_text(url: str) -> UrlContent:
     """下载单个 URL → 提取正文 → 清洗 → 返回结构化结果。
 
     使用两层策略：trafilatura 静态提取，不足 200 字则 tavily 后备。
     单 URL 超时 30 秒。
     """
-    result = {"url": url, "title": None, "content": ""}
+    result = UrlContent(url=url)
     try:
         # 尝试提取 title
         try:
@@ -61,7 +62,7 @@ def fetch_url_text(url: str) -> dict:
             if downloaded:
                 text = trafilatura.extract(downloaded)
                 if text and len(text) >= 200:
-                    result["content"] = clean_content(text)
+                    result.content = clean_content(text)
                     return result
         except Exception as e:
             logger.warning("Trafilatura extraction failed for %s: %s", url, e)
@@ -74,26 +75,26 @@ def fetch_url_text(url: str) -> dict:
                 if tavily_result and tavily_result.get("results"):
                     content = tavily_result["results"][0].get("raw_content", "")
                     if content:
-                        result['title'] = tavily_result["results"][0].get("title", "")
-                        result["content"] = clean_content(content)
+                        result.title = tavily_result["results"][0].get("title", "")
+                        result.content = clean_content(content)
                         return result
             except Exception as e:
                 logger.warning("Tavily extraction failed for %s: %s", url, e)
 
         # 全部失败
-        result["content"] = "[抓取失败]"
+        result.content = "[抓取失败]"
         return result
 
     except Exception as e:
         logger.error("Unexpected error fetching %s: %s", url, e)
-        result["content"] = "[抓取失败]"
+        result.content = "[抓取失败]"
         return result
 
 
 # ── Concurrent URL Fetch ─────────────────────────────────────────────────────
 
 
-def fetch_urls_concurrent(urls: list[str]) -> list[dict]:
+def fetch_urls_concurrent(urls: list[str]) -> list[UrlContent]:
     """多线程并发抓取，max_workers=5。单条失败不影响整体。"""
     if not urls:
         return []
@@ -115,9 +116,9 @@ def fetch_urls_concurrent(urls: list[str]) -> list[dict]:
             except Exception as e:
                 url = futures[future]
                 logger.error("Concurrent fetch failed for %s: %s", url, e)
-                results.append({"url": url, "title": None, "content": "[抓取失败]"})
+                results.append(UrlContent(url=url, content="[抓取失败]"))
 
     # 按原始顺序排序
     order = {url: i for i, url in enumerate(unique_urls)}
-    results.sort(key=lambda r: order.get(r.get("url", ""), 999))
+    results.sort(key=lambda r: order.get(r.url, 999))
     return results

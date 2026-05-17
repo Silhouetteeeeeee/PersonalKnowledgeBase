@@ -107,9 +107,9 @@ def classify_and_answer(state: dict) -> dict:
     url_contents = state.get("url_contents", [])
     user_message = state.get("user_message", "")
     if url_contents and all(
-        uc.get("content", "") == "[抓取失败]" for uc in url_contents
+        uc.content == "[抓取失败]" for uc in url_contents
     ) and not re.sub(r'https?://[^\s]+', '', user_message).strip():
-        failed = [uc.get("url", "") for uc in url_contents]
+        failed = [uc.url for uc in url_contents]
         logger.warning("All %d URLs failed to fetch, skipping agent", len(failed))
         return {
             "answer": f"抱歉，以下网页内容抓取失败：\n" + "\n".join(f"- {u}" for u in failed) + "\n\n请检查链接是否可访问或稍后重试。",

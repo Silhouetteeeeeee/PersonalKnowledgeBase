@@ -29,10 +29,13 @@ def parse(state: dict) -> dict:
                      f"{build_url_context(url_contents, 200)}",
         )]
 
-    return ParseResult(
+    result = ParseResult(
         user_message=user_message,
         user_id=state.get("user_id", "unknown"),
         timestamp=state.get("timestamp", ""),
         url_contents=url_contents,
         logic_chain=logic_chain,
     ).model_dump()
+    # Keep UrlContent as objects so downstream consumers can use attribute access
+    result["url_contents"] = url_contents
+    return result

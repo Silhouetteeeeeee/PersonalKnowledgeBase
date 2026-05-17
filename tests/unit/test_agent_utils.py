@@ -1,6 +1,7 @@
 """Tests for agent utility functions."""
 
 from agent.utils.agent_utils import build_context_block
+from agent.models.value_objects import UrlContent
 
 def test_build_context_block_empty():
     result = build_context_block({})
@@ -53,7 +54,7 @@ def test_build_context_block_with_url_contents():
     """url_contents 非空时包含网页内容块。"""
     result = build_context_block({
         "url_contents": [
-            {"url": "https://example.com", "title": "测试标题", "content": "正文内容"}
+            UrlContent(url="https://example.com", title="测试标题", content="正文内容")
         ],
     })
     assert "网页内容" in result
@@ -65,8 +66,8 @@ def test_build_context_block_with_multiple_urls():
     """多个 URL 时全部包含。"""
     result = build_context_block({
         "url_contents": [
-            {"url": "https://a.com", "title": "文章A", "content": "内容A"},
-            {"url": "https://b.com", "title": None, "content": "内容B的内容"},
+            UrlContent(url="https://a.com", title="文章A", content="内容A"),
+            UrlContent(url="https://b.com", title=None, content="内容B的内容"),
         ],
     })
     assert "文章A" in result
@@ -87,7 +88,7 @@ def test_build_context_block_with_url_only_message():
     """纯 URL 消息含 '请直接总结' 指令标记。"""
     result = build_context_block({
         "url_contents": [
-            {"url": "https://example.com", "title": "文章", "content": "正文"}
+            UrlContent(url="https://example.com", title="文章", content="正文")
         ],
         "user_message": "https://example.com",
     })

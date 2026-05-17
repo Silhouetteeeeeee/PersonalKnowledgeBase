@@ -1,5 +1,6 @@
 """Tests for the rewrite_query node."""
 import pytest
+from agent.models.value_objects import UrlContent
 
 
 def test_skip_rewrite_when_no_history(monkeypatch):
@@ -171,7 +172,7 @@ def test_rewrite_query_uses_title_when_available(monkeypatch):
         "user_message": "总结 https://example.com",
         "session_id": "1",
         "url_contents": [
-            {"url": "https://example.com", "title": "Python入门教程", "content": "正文..."}
+            UrlContent(url="https://example.com", title="Python入门教程", content="正文...")
         ],
     })
     assert "Python入门教程" in result["search_query"]
@@ -188,8 +189,8 @@ def test_rewrite_query_uses_first_sentence_when_no_title(monkeypatch):
         "user_message": "总结 https://example.com",
         "session_id": "1",
         "url_contents": [
-            {"url": "https://example.com", "title": None,
-             "content": "这是文章的第一句话。这是第二句。第三句。"}
+            UrlContent(url="https://example.com", title=None,
+                       content="这是文章的第一句话。这是第二句。第三句。")
         ],
     })
     assert "第一句话" in result["search_query"]
@@ -207,7 +208,7 @@ def test_rewrite_query_prefers_user_question(monkeypatch):
         "user_message": "这个文章提到了哪些设计模式 https://example.com",
         "session_id": "1",
         "url_contents": [
-            {"url": "https://example.com", "title": "设计模式详解", "content": "正文..."}
+            UrlContent(url="https://example.com", title="设计模式详解", content="正文...")
         ],
     })
     assert "设计模式" in result["search_query"]
@@ -225,7 +226,7 @@ def test_rewrite_query_url_only_no_additional_text(monkeypatch):
         "user_message": "https://example.com",
         "session_id": "1",
         "url_contents": [
-            {"url": "https://example.com", "title": "Python入门", "content": "正文..."}
+            UrlContent(url="https://example.com", title="Python入门", content="正文...")
         ],
     })
     assert "Python入门" in result["search_query"]

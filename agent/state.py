@@ -2,6 +2,8 @@ from typing import Annotated
 from typing_extensions import TypedDict
 import operator
 
+from agent.models.value_objects import UrlContent, LogicChainStep, StoredKnowledge
+
 
 class AgentState(TypedDict):
     user_message: str
@@ -11,7 +13,7 @@ class AgentState(TypedDict):
     confidence: float
     needs_store: bool
     search_results: list[str]
-    stored_knowledge: list[dict]
+    stored_knowledge: list[StoredKnowledge]
     stored_knowledge_ids: list[int]
     wiki_page_ids: list[int]
     answer: str
@@ -34,7 +36,7 @@ class AgentState(TypedDict):
     error_recorded: bool
 
     # Reasoning trace (accumulates across nodes via operator.add)
-    logic_chain: Annotated[list[dict], operator.add]
+    logic_chain: Annotated[list[LogicChainStep], operator.add]
     user_profile: dict
 
     # Context management
@@ -43,4 +45,4 @@ class AgentState(TypedDict):
     episodic_memories: list[str]
 
     # URL fetching
-    url_contents: list[dict]  # URL 抓取结果列表，每个元素 {"url", "title", "content"}
+    url_contents: list[UrlContent]  # URL 抓取结果列表
