@@ -3,6 +3,7 @@ import logging
 import sqlite3
 import threading
 import time
+from datetime import datetime, timedelta
 from typing import Optional
 
 import jieba
@@ -434,7 +435,6 @@ def search_error_records_semantic(query: str, limit: int = 3) -> list[dict]:
 
 def init_review_schedule(page_id: int, next_review_at: str | None = None) -> int:
     """Insert a new review schedule for a page. Returns schedule id."""
-    from datetime import datetime, timedelta
     conn = get_connection()
     try:
         if next_review_at is None:
@@ -448,7 +448,10 @@ def init_review_schedule(page_id: int, next_review_at: str | None = None) -> int
         row = conn.execute(
             "SELECT id FROM review_schedule WHERE page_id = ?", (page_id,)
         ).fetchone()
-        return row["id"] if row else 0
+        sid = row["id"] if row else 0
+        if sid:
+            logger.info("Initialized review schedule for page_id=%d (schedule_id=%d)", page_id, sid)
+        return sid
     except Exception:
         conn.rollback()
         raise
@@ -495,6 +498,8 @@ def update_review_schedule(
             (easiness_factor, interval_days, repetitions, next_review_at, quality, schedule_id),
         )
         conn.commit()
+        logger.info("Updated review schedule id=%d: EF=%.2f interval=%d reps=%d quality=%d",
+                    schedule_id, easiness_factor, interval_days, repetitions, quality)
     except Exception:
         conn.rollback()
         raise
@@ -570,6 +575,7 @@ def record_sent_review(schedule_id: int, page_id: int, marker_id: str) -> int:
             (schedule_id, page_id, marker_id),
         )
         conn.commit()
+        logger.info("Recorded sent review: marker=%s page_id=%d", marker_id, page_id)
         return cur.lastrowid
     except Exception:
         conn.rollback()
