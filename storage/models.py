@@ -428,3 +428,151 @@ def search_error_records_semantic(query: str, limit: int = 3) -> list[dict]:
         return results
     finally:
         conn.close()
+
+
+# ── Spaced repetition helpers ──
+
+def init_review_schedule(page_id: int, next_review_at: str | None = None) -> int:
+    """Insert a new review schedule for a page. Returns schedule id."""
+    from datetime import datetime, timedelta
+    conn = get_connection()
+    try:
+        if next_review_at is None:
+            next_review_at = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            """INSERT OR IGNORE INTO review_schedule (page_id, next_review_at)
+               VALUES (?, ?)""",
+            (page_id, next_review_at),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id FROM review_schedule WHERE page_id = ?", (page_id,)
+        ).fetchone()
+        return row["id"] if row else 0
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_due_reviews(limit: int = 10) -> list[dict]:
+    """Query all schedules where next_review_at <= now, up to limit."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT rs.*, p.title, p.file_path
+               FROM review_schedule rs
+               JOIN pages p ON p.id = rs.page_id
+               WHERE rs.next_review_at <= datetime('now', 'localtime')
+                 AND p.status = 'active'
+               ORDER BY rs.next_review_at ASC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_review_schedule(
+    schedule_id: int,
+    easiness_factor: float,
+    interval_days: int,
+    repetitions: int,
+    next_review_at: str,
+    quality: int,
+) -> None:
+    """Update SM-2 parameters after a review."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """UPDATE review_schedule
+               SET easiness_factor = ?, interval_days = ?, repetitions = ?,
+                   next_review_at = ?, last_reviewed_at = datetime('now', 'localtime'),
+                   last_quality = ?
+               WHERE id = ?""",
+            (easiness_factor, interval_days, repetitions, next_review_at, quality, schedule_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def has_pending_review(page_id: int) -> bool:
+    """Check if a page has a pending (unanswered) review."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sent_reviews WHERE page_id = ? AND status = 'pending' LIMIT 1",
+            (page_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def get_sent_review_by_marker(marker_id: str) -> dict | None:
+    """Look up a sent_review by its marker_id."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM sent_reviews WHERE marker_id = ?", (marker_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def mark_review_answered(sent_id: int) -> None:
+    """Mark a sent_review as answered."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE sent_reviews SET status = 'reviewed' WHERE id = ?", (sent_id,),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_reviewed_pages_since(days: int = 7) -> list[dict]:
+    """Get pages reviewed in the last N days (for weekly integration)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT DISTINCT rs.page_id, p.title, p.file_path
+               FROM review_schedule rs
+               JOIN pages p ON p.id = rs.page_id
+               WHERE rs.last_reviewed_at >= datetime('now', 'localtime', ?)
+                 AND rs.last_quality >= 3
+                 AND p.status = 'active'
+               ORDER BY rs.last_reviewed_at DESC""",
+            (f'-{days} days',),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def record_sent_review(schedule_id: int, page_id: int, marker_id: str) -> int:
+    """Record that a review was sent to the user."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO sent_reviews (schedule_id, page_id, marker_id) VALUES (?, ?, ?)",
+            (schedule_id, page_id, marker_id),
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

@@ -80,6 +80,28 @@ def init_db() -> None:
             FOREIGN KEY (page_id) REFERENCES pages(id),
             UNIQUE(page_id, version)
         );
+        CREATE TABLE IF NOT EXISTS review_schedule (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL UNIQUE,
+            easiness_factor REAL NOT NULL DEFAULT 2.5,
+            interval_days INTEGER NOT NULL DEFAULT 1,
+            repetitions INTEGER NOT NULL DEFAULT 0,
+            next_review_at TEXT NOT NULL,
+            last_reviewed_at TEXT DEFAULT '',
+            last_quality INTEGER DEFAULT -1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS sent_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            schedule_id INTEGER NOT NULL,
+            page_id INTEGER NOT NULL,
+            marker_id TEXT NOT NULL UNIQUE,
+            sent_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            status TEXT NOT NULL DEFAULT 'pending',
+            FOREIGN KEY (schedule_id) REFERENCES review_schedule(id) ON DELETE CASCADE,
+            FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
+        );
         DROP TABLE IF EXISTS source_questions;
     """)
     conn.commit()
