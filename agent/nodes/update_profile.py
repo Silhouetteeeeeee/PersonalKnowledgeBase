@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
 from storage.profile import load_profile, save_profile, update_profile_field
+from agent.models.nodes import UpdateProfileResult
+from agent.models.value_objects import LogicChainStep
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,9 @@ def update_profile(state: dict) -> dict:
     user_id = state.get("user_id", "")
 
     if not user_message or not user_id:
-        return {"user_profile": state.get("user_profile", load_profile())}
+        return UpdateProfileResult(
+            user_profile=state.get("user_profile", load_profile()),
+        ).model_dump()
 
     profile = load_profile(user_id)
     prompt = (
@@ -49,7 +53,9 @@ def update_profile(state: dict) -> dict:
         result = LLM.generate_structured(prompt, ProfileOutput, use_language=False)
     except Exception as e:
         logger.warning("Profile extraction failed: %s", e)
-        return {"user_profile": state.get("user_profile", load_profile())}
+        return UpdateProfileResult(
+            user_profile=state.get("user_profile", load_profile()),
+        ).model_dump()
 
     updated_fields = [p.field for p in result.profiles if p.should_update]
     for p in result.profiles:
@@ -60,9 +66,12 @@ def update_profile(state: dict) -> dict:
 
     if updated_fields:
         logger.info("Updated profile fields: %s", updated_fields)
-        return {"user_profile": profile, "logic_chain": [{
-            "node": "update_profile",
-            "action": f"更新 {len(updated_fields)} 个画像字段",
-            "reasoning": f"字段：{', '.join(updated_fields)}",
-        }]}
-    return {"user_profile": profile}
+        return UpdateProfileResult(
+            user_profile=profile,
+            logic_chain=[LogicChainStep(
+                node="update_profile",
+                action=f"更新 {len(updated_fields)} 个画像字段",
+                reasoning=f"字段：{', '.join(updated_fields)}",
+            )],
+        ).model_dump()
+    return UpdateProfileResult(user_profile=profile).model_dump()

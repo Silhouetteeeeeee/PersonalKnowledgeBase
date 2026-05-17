@@ -1,5 +1,7 @@
 import logging
 
+from agent.models.nodes import RespondResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,4 +24,4 @@ def respond(state: dict) -> dict:
             answer += f"\n\n[矛盾警告] {details}"
 
     logger.info("Responding with answer (len=%d): '%s'", len(answer), answer[:80])
-    return {"final_response": answer}
+    return RespondResult(final_response=answer).model_dump()
