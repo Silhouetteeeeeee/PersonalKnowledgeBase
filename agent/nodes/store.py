@@ -83,14 +83,14 @@ def _find_similar_existing_pages(source_text: str, max_pages: int = 5) -> list[d
     similar = find_similar_pages(source_text, threshold=0.5, limit=max_pages)
     result = []
     for p in similar:
-        file_page = read_page(p["file_path"])
+        file_page = read_page(p.file_path)
         if file_page:
             body = file_page["body"]
             preview = body[:200] + "..." if len(body) > 200 else body
             result.append({
-                "title": p["title"],
+                "title": p.title,
                 "body_preview": preview,
-                "distance": p.get("distance", 0),
+                "distance": p.distance,
             })
     return result
 
@@ -347,10 +347,10 @@ def _fast_skip_check(answer: str) -> tuple[bool, str]:
 
     if len(answer) < 200:
         similar = find_similar_pages(answer, threshold=0.75, limit=3)
-        if similar and similar[0].get("distance", 1) >= 0.82:
+        if similar and similar[0].distance >= 0.82:
             return True, (
-                f"already covered by '{similar[0]['title']}' "
-                f"(dist={similar[0].get('distance', 0):.2f})"
+                f"already covered by '{similar[0].title}' "
+                f"(dist={similar[0].distance:.2f})"
             )
 
     return False, ""
@@ -370,10 +370,8 @@ def _sync_background_store(state: dict) -> None:
 
     Runs inside asyncio.to_thread — must not touch async code.
     """
-    # Step 1: Save reasoning log (always)
-    _save_reasoning_log(state)
 
-    # Step 2: Wiki extraction (conditional)
+    # Step 1: Wiki extraction (conditional)
     if not state.get("needs_store", True):
         logger.info("Background store: needs_store=False, skipping wiki extraction")
         return
@@ -393,8 +391,13 @@ def _sync_background_store(state: dict) -> None:
     source_id = _get_source_id(user_id)
     source_label = f"Question: {state['user_message']}"
     result = extract_to_wiki(state["answer"], source_id, source_label)
+    logic_chain = state.get("logic_chain", [])
+    logic_chain.extend(result.get("logic_chain", []))
+    state['logic_chain'] = logic_chain
     if result.get("page_ids"):
         logger.info("Background store: saved %d wiki pages", len(result["page_ids"]))
+    # Step 2: Save reasoning log (always)
+    _save_reasoning_log(state)
 
 
 def _save_reasoning_log(state: dict) -> None:

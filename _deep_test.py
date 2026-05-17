@@ -114,8 +114,8 @@ log("\n--- Dedup check: new pages overlap with existing ---")
 for p in new_pages:
     similar = find_similar_pages(p["title"], threshold=0.5, limit=5)
     for s in similar:
-        if s["id"] != p["id"] and s.get("distance", 1) < 0.5:
-            log(f"  {p['title']} ~ {s['title']} (id={s['id']}, dist={s.get('distance',0):.2f})")
+        if s.id != p["id"] and s.distance < 0.5:
+            log(f"  {p['title']} ~ {s.title} (id={s.id}, dist={s.distance:.2f})")
 
 # 2d. Sources integrity check
 log("\n--- Sources integrity ---")
@@ -149,8 +149,8 @@ for p1 in new_pages:
         content1 = (p1["title"] or "")
         similar = find_similar_pages(content1, threshold=0.2, limit=10)
         for s in similar:
-            if s["id"] == p2["id"]:
-                log(f"  {p1['title']} ~ {p2['title']} (dist={s.get('distance',0):.2f})")
+            if s.id == p2["id"]:
+                log(f"  {p1['title']} ~ {p2['title']} (dist={s.distance:.2f})")
 
 conn.close()
 log(f"\n{'='*60}")

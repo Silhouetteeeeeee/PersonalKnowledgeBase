@@ -10,6 +10,7 @@ from storage.models import find_similar_pages, get_related_pages, get_page_by_ti
 from storage.wiki_storage import read_page
 from agent.models.nodes import RetrieveResult
 from agent.models.value_objects import LogicChainStep, StoredKnowledge
+from agent.models.storage import WikiPage
 
 logger = logging.getLogger(__name__)
 
@@ -41,21 +42,21 @@ def retrieve(state: dict) -> dict:
     )]).model_dump()
 
 
-def _retrieve_wiki_pages(pages: list[dict], query: str) -> dict:
+def _retrieve_wiki_pages(pages: list[WikiPage], query: str) -> dict:
     """Read full wiki page content and expand with related pages."""
     # Read pages from disk
     results: list[StoredKnowledge] = []
     for p in pages:
-        file_page = read_page(p["file_path"])
+        file_page = read_page(p.file_path)
         if not file_page:
             continue
         results.append(StoredKnowledge(
             type="wiki_page",
-            page_id=p["id"],
-            title=p["title"],
+            page_id=p.id,
+            title=p.title,
             content=file_page["body"],
             tags=file_page["tags"],
-            distance=p.get("distance", 0),
+            distance=p.distance,
         ))
 
     # Expand with related pages (second pass)
@@ -63,8 +64,8 @@ def _retrieve_wiki_pages(pages: list[dict], query: str) -> dict:
     for r in results:
         related = get_related_pages(r.page_id)
         for rp in related:
-            if rp["title"] not in {x.title for x in results}:
-                related_titles.add(rp["title"])
+            if rp.title not in {x.title for x in results}:
+                related_titles.add(rp.title)
 
     for title in related_titles:
         page = get_page_by_title(title)

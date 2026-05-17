@@ -7,6 +7,8 @@ from typing import Optional
 
 import jieba
 
+from agent.models.storage import WikiPage
+
 from sqlite_vec import serialize_float32
 from .database import get_connection
 
@@ -273,8 +275,8 @@ def cleanup_old_versions(days: int = 30) -> int:
         conn.close()
 
 
-def find_similar_pages(query: str, threshold: float = 0.6, limit: int = 5) -> list[dict]:
-    """Search wiki pages by semantic similarity. Returns list of page dicts with distance."""
+def find_similar_pages(query: str, threshold: float = 0.6, limit: int = 5) -> list[WikiPage]:
+    """Search wiki pages by semantic similarity. Returns list of WikiPage with distance."""
     embedding = generate_embedding(query)
     conn = get_connection()
     try:
@@ -292,14 +294,14 @@ def find_similar_pages(query: str, threshold: float = 0.6, limit: int = 5) -> li
                ORDER BY v.distance""",
             (serialize_float32(embedding), limit * 4, threshold),
         ).fetchall()
-        results = [_page_row_to_dict(r) for r in rows][:limit]
+        results = [WikiPage(**dict(r)) for r in rows][:limit]
         logger.info("Page semantic search: %d results for '%s'", len(results), query[:30])
         return results
     finally:
         conn.close()
 
 
-def get_related_pages(page_id: int) -> list[dict]:
+def get_related_pages(page_id: int) -> list[WikiPage]:
     """Get pages linked via page_relations to the given page (bidirectional)."""
     conn = get_connection()
     try:
@@ -315,7 +317,7 @@ def get_related_pages(page_id: int) -> list[dict]:
                """,
             (page_id, page_id),
         ).fetchall()
-        return [_page_row_to_dict(r) for r in rows]
+        return [WikiPage(**dict(r)) for r in rows]
     finally:
         conn.close()
 

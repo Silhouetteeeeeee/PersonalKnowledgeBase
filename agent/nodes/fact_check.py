@@ -26,7 +26,7 @@ class FactCheckOutput(BaseModel):
     )
 
 
-def _search_related(state: dict) -> tuple[list[dict], str]:
+def _search_related(state: dict) -> tuple[list, str]:
     """Search for active wiki pages related to the answer."""
     answer = state.get("answer", "")
     if not answer:
@@ -44,11 +44,11 @@ def _search_related(state: dict) -> tuple[list[dict], str]:
     # Read actual page content from filesystem
     knowledge_lines = []
     for k in related:
-        page = read_page(k["file_path"])
+        page = read_page(k.file_path)
         if page:
-            knowledge_lines.append(f"- {k['title']}: {page['body'][:500]}")
+            knowledge_lines.append(f"- {k.title}: {page['body'][:500]}")
         else:
-            knowledge_lines.append(f"- {k['title']}: (页面文件不存在)")
+            knowledge_lines.append(f"- {k.title}: (页面文件不存在)")
     knowledge_text = "\n".join(knowledge_lines)
     return related, knowledge_text
 
@@ -84,8 +84,8 @@ def fact_check(state: dict) -> dict:
         contradiction_found=result.has_contradiction,
         contradiction_details=result.explanation if result.has_contradiction else "",
         contradiction_severity=result.severity,
-        contradiction_knowledge_ids=[k["id"] for k in active_related] if result.has_contradiction else [],
-        contradiction_knowledge_texts=[f"[{k['title']}]({k['file_path']})" for k in active_related] if result.has_contradiction else [],
+        contradiction_knowledge_ids=[k.id for k in active_related] if result.has_contradiction else [],
+        contradiction_knowledge_texts=[f"[{k.title}]({k.file_path})" for k in active_related] if result.has_contradiction else [],
         logic_chain=[LogicChainStep(
             node="fact_check",
             action="矛盾检测" if result.has_contradiction else "矛盾检测通过",

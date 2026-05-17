@@ -107,7 +107,7 @@ class TestWikiDB:
         assert found["title"] == "Test Wiki Page"
 
         results = find_similar_pages("test wiki", threshold=1.0, limit=5)
-        titles = [r["title"] for r in results]
+        titles = [r.title for r in results]
         assert "Test Wiki Page" in titles
 
     def test_page_relations(self):
@@ -124,5 +124,5 @@ class TestWikiDB:
         update_page_relations(pid1, ["Page B"])
 
         related = get_related_pages(pid1)
-        titles = [r["title"] for r in related]
+        titles = [r.title for r in related]
         assert "Page B" in titles
