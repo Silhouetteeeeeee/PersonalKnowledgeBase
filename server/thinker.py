@@ -13,11 +13,10 @@ from pydantic import BaseModel, Field
 from agent.utils.llm import LLM
 from storage.models import (
     get_due_reviews,
-    update_review_schedule,
     has_pending_review,
     get_sent_review_by_marker,
-    mark_review_answered,
     get_reviewed_pages_since,
+    process_review_feedback,
 )
 from storage.wiki_storage import read_page
 
@@ -43,6 +42,9 @@ def _sm2_update(quality: int, easiness_factor: float, interval: int, repetitions
 
     Returns (new_ef, new_interval, new_repetitions).
     """
+    if not 0 <= quality <= 5:
+        raise ValueError(f"quality must be 0-5, got {quality}")
+
     if quality < 3:
         repetitions = 0
         interval = 1
@@ -123,15 +125,15 @@ def get_review_marker(page_id: int) -> str:
     return f"#review_{page_id}_{datetime.now().strftime('%Y%m%d')}"
 
 
-def check_due_reviews(client=None, user_id: str = "") -> list[dict]:
+def check_due_reviews(user_id: str = "") -> list[dict]:
     """Check for due reviews, build messages, return list of prepared reviews.
 
     Called by APScheduler. Returns list of dicts ready for sending by bot.py.
 
     Returns list of dicts: [{marker_id, page_id, page_title, message, schedule_id}, ...]
     """
-    if client is None or not user_id:
-        logger.warning("check_due_reviews: no client or user_id provided")
+    if not user_id:
+        logger.warning("check_due_reviews: no user_id provided")
         return []
 
     due = get_due_reviews(limit=10)
@@ -237,20 +239,20 @@ def handle_review_response(quote_text: str, user_feedback: str) -> str:
     if row is None:
         return "找不到对应的复习记录。不过没关系，继续加油！💪"
 
-    # SM-2 update
+    # SM-2 update (atomic via process_review_feedback)
     new_ef, new_interval, new_reps = _sm2_update(
         quality, row["easiness_factor"], row["interval_days"], row["repetitions"],
     )
     next_review = (datetime.now() + timedelta(days=new_interval)).strftime("%Y-%m-%d %H:%M:%S")
-    update_review_schedule(
+    process_review_feedback(
         schedule_id=row["id"],
+        sent_id=sent["id"],
         easiness_factor=new_ef,
         interval_days=new_interval,
         repetitions=new_reps,
         next_review_at=next_review,
         quality=quality,
     )
-    mark_review_answered(sent["id"])
 
     # Build confirmation
     quality_labels = {5: "记住了 ✅", 3: "模糊 🤔", 1: "忘了 ❌"}
@@ -264,14 +266,14 @@ def handle_review_response(quote_text: str, user_feedback: str) -> str:
     )
 
 
-def generate_weekly_integration(client=None, user_id: str = "") -> dict | None:
+def generate_weekly_integration(user_id: str = "") -> dict | None:
     """Generate a weekly knowledge integration.
 
     Called by APScheduler (e.g., every Monday 10:00).
     Returns a message dict with "msgtype" and "markdown" keys, or None if skipped.
     """
-    if client is None or not user_id:
-        logger.warning("generate_weekly_integration: no client or user_id provided")
+    if not user_id:
+        logger.warning("generate_weekly_integration: no user_id provided")
         return None
 
     pages = get_reviewed_pages_since(days=7)

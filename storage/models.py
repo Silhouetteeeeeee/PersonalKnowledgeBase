@@ -582,3 +582,39 @@ def record_sent_review(schedule_id: int, page_id: int, marker_id: str) -> int:
         raise
     finally:
         conn.close()
+
+
+def process_review_feedback(
+    schedule_id: int,
+    sent_id: int,
+    easiness_factor: float,
+    interval_days: int,
+    repetitions: int,
+    next_review_at: str,
+    quality: int,
+) -> None:
+    """Atomically update SM-2 schedule and mark sent_review as answered.
+
+    Performed in a single transaction for consistency.
+    """
+    conn = get_connection()
+    try:
+        conn.execute(
+            """UPDATE review_schedule
+               SET easiness_factor = ?, interval_days = ?, repetitions = ?,
+                   next_review_at = ?, last_reviewed_at = datetime('now', 'localtime'),
+                   last_quality = ?
+               WHERE id = ?""",
+            (easiness_factor, interval_days, repetitions, next_review_at, quality, schedule_id),
+        )
+        conn.execute(
+            "UPDATE sent_reviews SET status = 'reviewed' WHERE id = ?", (sent_id,),
+        )
+        conn.commit()
+        logger.info("Processed review feedback: schedule=%d sent=%d quality=%d next=%s",
+                    schedule_id, sent_id, quality, next_review_at)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
