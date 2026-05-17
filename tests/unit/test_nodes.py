@@ -1,6 +1,7 @@
 """Unit tests for individual graph nodes (no real LLM calls)."""
 import pytest
 from storage.database import init_db
+from agent.models.value_objects import UrlContent
 
 
 @pytest.fixture(autouse=True)
@@ -166,7 +167,7 @@ def test_record_error():
 def test_parse_with_urls(mocker):
     """含 URL 的消息 → parse 输出 url_contents。"""
     mocker.patch('agent.nodes.parse.fetch_urls_concurrent', return_value=[
-        {"url": "https://example.com", "title": "测试页面", "content": "正文"},
+        UrlContent(url="https://example.com", title="测试页面", content="正文"),
     ])
     from agent.nodes.parse import parse
     result = parse({
@@ -192,8 +193,8 @@ def test_parse_without_urls():
 def test_parse_with_multiple_urls(mocker):
     """多个 URL 全部提取。"""
     mocker.patch('agent.nodes.parse.fetch_urls_concurrent', return_value=[
-        {"url": "https://a.com", "title": "A", "content": "内容A"},
-        {"url": "https://b.com", "title": "B", "content": "内容B"},
+        UrlContent(url="https://a.com", title="A", content="内容A"),
+        UrlContent(url="https://b.com", title="B", content="内容B"),
     ])
     from agent.nodes.parse import parse
     result = parse({
@@ -207,7 +208,7 @@ def test_parse_with_multiple_urls(mocker):
 def test_parse_with_only_url(mocker):
     """消息纯 URL，没有附加文字。"""
     mocker.patch('agent.nodes.parse.fetch_urls_concurrent', return_value=[
-        {"url": "https://example.com", "title": None, "content": "正文内容"},
+        UrlContent(url="https://example.com", title=None, content="正文内容"),
     ])
     from agent.nodes.parse import parse
     result = parse({
