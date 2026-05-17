@@ -22,6 +22,7 @@ from storage.models import (
     get_page_by_title,
     find_similar_pages,
     save_page_version,
+    init_review_schedule,
 )
 from storage.wiki_storage import (
     ensure_dirs,
@@ -314,6 +315,7 @@ def extract_to_wiki(
             checksum=checksum,
             content=full_content,
         )
+        init_review_schedule(pid)
         saved_ids.append(pid)
 
         links = extract_wikilinks(full_content)

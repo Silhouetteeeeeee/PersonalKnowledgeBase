@@ -32,3 +32,7 @@ DAILY_SUMMARY_TIME = os.getenv("DAILY_SUMMARY_TIME", "09:00")
 
 # URL fetching
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+
+# Thinker module (spaced repetition)
+THINKER_USER_ID = os.getenv("THINKER_USER_ID", "")
+THINKER_CHECK_INTERVAL = int(os.getenv("THINKER_CHECK_INTERVAL", "4"))
