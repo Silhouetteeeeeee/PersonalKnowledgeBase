@@ -15,7 +15,6 @@ from storage.models import (
     get_due_reviews,
     update_review_schedule,
     has_pending_review,
-    record_sent_review,
     get_sent_review_by_marker,
     mark_review_answered,
     get_reviewed_pages_since,
@@ -39,7 +38,7 @@ FEEDBACK_KEYWORDS = {
 }
 
 
-def _sm2_update(quality: int, easiness_factor: float, interval: int, repetitions: int):
+def _sm2_update(quality: int, easiness_factor: float, interval: int, repetitions: int) -> tuple[float, int, int]:
     """Compute new SM-2 parameters given a quality rating (0-5).
 
     Returns (new_ef, new_interval, new_repetitions).
@@ -265,39 +264,36 @@ def handle_review_response(quote_text: str, user_feedback: str) -> str:
     )
 
 
-def generate_weekly_integration(client=None, user_id: str = "") -> None:
-    """Generate and push a weekly knowledge integration.
+def generate_weekly_integration(client=None, user_id: str = "") -> dict | None:
+    """Generate a weekly knowledge integration.
 
     Called by APScheduler (e.g., every Monday 10:00).
+    Returns a message dict with "msgtype" and "markdown" keys, or None if skipped.
     """
     if client is None or not user_id:
         logger.warning("generate_weekly_integration: no client or user_id provided")
-        return
+        return None
 
     pages = get_reviewed_pages_since(days=7)
     if len(pages) < 2:
         logger.info("Thinker: only %d pages reviewed this week, skipping integration", len(pages))
-        return
+        return None
 
     integration = _generate_weekly_integration(pages)
     if integration is None:
         logger.warning("Thinker: failed to generate weekly integration")
-        return
+        return None
 
     new_qs = "\n".join(f"- {q}" for q in integration.new_questions)
-    message = (
+    content = (
         f"📚 **本周知识整合：{integration.title}**\n\n"
         f"{integration.content}\n\n"
         f"**延伸思考：**\n{new_qs}\n\n"
         f"本周共复习了 {len(pages)} 个知识点，继续保持！🎯"
     )
 
-    try:
-        import asyncio
-        asyncio.create_task(client.send_message(user_id, {
-            "msgtype": "markdown",
-            "markdown": {"content": message},
-        }))
-        logger.info("Thinker: pushed weekly integration '%s'", integration.title)
-    except Exception as e:
-        logger.error("Thinker: failed to push weekly integration: %s", e)
+    logger.info("Thinker: prepared weekly integration '%s'", integration.title)
+    return {
+        "msgtype": "markdown",
+        "markdown": {"content": content},
+    }
