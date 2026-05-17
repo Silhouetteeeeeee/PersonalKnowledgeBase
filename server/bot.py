@@ -10,6 +10,7 @@ import os
 from aibot import WSClient, WSClientOptions
 from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET, CLAUDE_CODE_BRIDGE_ENABLED
 from server.config import DAILY_SUMMARY_ENABLED, DAILY_SUMMARY_USER_ID
+from server.config import THINKER_USER_ID, THINKER_CHECK_INTERVAL
 from agent.graph import build_graph
 from agent.nodes.store import run_background_store
 from storage.profile import load_profile
@@ -19,9 +20,10 @@ from memory.message_history import MessageHistory
 from memory.episodic import EpisodicMemory
 
 from server.claude_bridge import ClaudeCodeBridge
+from server.thinker import check_due_reviews, handle_review_response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from server.daily_summary import send_daily_summary
-from storage.models import cleanup_old_versions
+from storage.models import cleanup_old_versions, record_sent_review
 
 logger = logging.getLogger(__name__)
 graph = build_graph()
@@ -45,6 +47,7 @@ class KnowledgeBot:
         self._setup_handlers()
         self._start_daily_summary_scheduler()
         self._start_cleanup_scheduler()
+        self._start_thinker_scheduler()
 
     def _setup_handlers(self):
         @self.client.on("connected")
@@ -60,6 +63,8 @@ class KnowledgeBot:
             body = frame.get("body", {})
             content = body.get("text", {}).get("content", "").strip()
             user_id = body.get("from", {}).get("userid", "unknown")
+            # 引用文字
+            quote = body.get('quote')
 
             if not content:
                 return
@@ -77,6 +82,19 @@ class KnowledgeBot:
                 })
                 logger.info("Claude Code bridge response sent to user_id=%s", user_id)
                 return
+
+            # ── Thinker review response route ──
+            if quote and isinstance(quote, dict):
+                quoted_text = quote.get('text', '')
+                if '#review_' in quoted_text:
+                    logger.info("Thinker: user %s replied to review: %s", user_id, content[:30])
+                    response = handle_review_response(quoted_text, content)
+                    await self.client.reply(frame, {
+                        "msgtype": "markdown",
+                        "markdown": {"content": response},
+                    })
+                    logger.info("Thinker response sent to user_id=%s", user_id)
+                    return
 
             logger.info("Received text from %s: %s", user_id, content[:60])
 
@@ -230,6 +248,63 @@ class KnowledgeBot:
             replace_existing=True,
         )
         logger.info("Wiki cleanup scheduler started (03:00, keep 30 days)")
+
+    def _start_thinker_scheduler(self):
+        """Schedule periodic thinker review checks."""
+        if not THINKER_USER_ID:
+            logger.info("Thinker disabled: no THINKER_USER_ID configured")
+            return
+
+        self.scheduler.add_job(
+            self._run_thinker_check,
+            "interval",
+            hours=THINKER_CHECK_INTERVAL,
+            id="thinker_review_check",
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
+        self.scheduler.add_job(
+            self._run_weekly_integration,
+            "cron",
+            day_of_week="mon",
+            hour=10,
+            minute=0,
+            id="thinker_weekly_integration",
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
+        logger.info(
+            "Thinker scheduler started (check every %dh, weekly Mon 10:00, user=%s)",
+            THINKER_CHECK_INTERVAL, THINKER_USER_ID,
+        )
+
+    async def _run_thinker_check(self):
+        """Async wrapper for thinker review check."""
+        try:
+            pushed = await asyncio.to_thread(check_due_reviews, THINKER_USER_ID)
+            for item in pushed:
+                await self.client.send_message(THINKER_USER_ID, {
+                    "msgtype": "markdown",
+                    "markdown": {"content": item["message"]},
+                })
+                await asyncio.to_thread(
+                    record_sent_review,
+                    item["schedule_id"], item["page_id"], item["marker_id"],
+                )
+                logger.info("Thinker: pushed review '%s' to %s", item["page_title"], THINKER_USER_ID)
+        except Exception:
+            logger.exception("Thinker check failed")
+
+    async def _run_weekly_integration(self):
+        """Async wrapper for weekly integration."""
+        from server.thinker import generate_weekly_integration
+        try:
+            message = await asyncio.to_thread(generate_weekly_integration, THINKER_USER_ID)
+            if message:
+                await self.client.send_message(THINKER_USER_ID, message)
+                logger.info("Thinker: pushed weekly integration")
+        except Exception:
+            logger.exception("Weekly integration failed")
 
     async def _save_turn(self, session_id: int, user_id: str, user_msg: str, asst_msg: str):
         """Persist conversation turn asynchronously (non-blocking)."""
