@@ -10,6 +10,8 @@ from agent.state import AgentState
 from agent.utils.llm import LLM
 from agent.utils.agent_utils import build_context_block
 from agent.tools.web_search import search_web_from_baidu
+from agent.models.nodes import ClassifyResult
+from agent.models.value_objects import LogicChainStep
 
 logger = logging.getLogger(__name__)
 
@@ -70,31 +72,31 @@ def _fallback_answer(state: dict) -> dict:
         result = LLM.generate_structured(prompt, ClassifyOutput)
     except Exception as e:
         logger.error("Fallback generation also failed: %s", e)
-        return {
-                "answer": "",
-                "confidence": 0.0,
-                "needs_store": False,
-                "logic_chain": [{
-                    "node": "classify_and_answer",
-                    "action": "生成答案失败",
-                    "reasoning": f"Agent and fallback both failed: {e}",
-                }],
-            }
+        return ClassifyResult(
+            answer="",
+            confidence=0.0,
+            needs_store=False,
+            logic_chain=[LogicChainStep(
+                node="classify_and_answer",
+                action="生成答案失败",
+                reasoning=f"Agent and fallback both failed: {e}",
+            )],
+        ).model_dump()
 
-    return {
-        "answer": result.answer,
-        "confidence": result.confidence * 0.8,
-        "needs_store": result.needs_store,
-        "logic_chain": [{
-            "node": "classify_and_answer",
-            "action": "网络搜索超时，基于知识直接回答",
-            "reasoning": result.reasoning_trace,
-            "confidence": result.confidence * 0.8,
-            "needs_store": result.needs_store,
-            "search_performed": False,
-            "fallback": True,
-        }],
-    }
+    return ClassifyResult(
+        answer=result.answer,
+        confidence=result.confidence * 0.8,
+        needs_store=result.needs_store,
+        logic_chain=[LogicChainStep(
+            node="classify_and_answer",
+            action="网络搜索超时，基于知识直接回答",
+            reasoning=result.reasoning_trace,
+            confidence=result.confidence * 0.8,
+            needs_store=result.needs_store,
+            search_performed=False,
+            fallback=True,
+        )],
+    ).model_dump()
 
 
 def classify_and_answer(state: dict) -> dict:
@@ -111,16 +113,16 @@ def classify_and_answer(state: dict) -> dict:
     ) and not re.sub(r'https?://[^\s]+', '', user_message).strip():
         failed = [uc.url for uc in url_contents]
         logger.warning("All %d URLs failed to fetch, skipping agent", len(failed))
-        return {
-            "answer": f"抱歉，以下网页内容抓取失败：\n" + "\n".join(f"- {u}" for u in failed) + "\n\n请检查链接是否可访问或稍后重试。",
-            "confidence": 1.0,
-            "needs_store": False,
-            "logic_chain": [{
-                "node": "classify_and_answer",
-                "action": "URL 全部抓取失败",
-                "reasoning": f"{len(url_contents)} 个 URL 全部抓取失败，跳过 Agent 直接返回",
-            }],
-        }
+        return ClassifyResult(
+            answer=f"抱歉，以下网页内容抓取失败：\n" + "\n".join(f"- {u}" for u in failed) + "\n\n请检查链接是否可访问或稍后重试。",
+            confidence=1.0,
+            needs_store=False,
+            logic_chain=[LogicChainStep(
+                node="classify_and_answer",
+                action="URL 全部抓取失败",
+                reasoning=f"{len(url_contents)} 个 URL 全部抓取失败，跳过 Agent 直接返回",
+            )],
+        ).model_dump()
 
     agent = create_react_agent(
         model=LLM.get_model(),
@@ -156,19 +158,19 @@ def classify_and_answer(state: dict) -> dict:
     )
     logger.info("Answer: %s", structured.answer[:80])
 
-    return {
-        "answer": structured.answer,
-        "confidence": structured.confidence,
-        "needs_store": structured.needs_store,
-        "logic_chain": [{
-            "node": "classify_and_answer",
-            "action": "搜索后生成答案" if search_performed else "生成初始答案",
-            "reasoning": structured.reasoning_trace,
-            "confidence": structured.confidence,
-            "needs_store": structured.needs_store,
-            "search_performed": search_performed,
-        }],
-    }
+    return ClassifyResult(
+        answer=structured.answer,
+        confidence=structured.confidence,
+        needs_store=structured.needs_store,
+        logic_chain=[LogicChainStep(
+            node="classify_and_answer",
+            action="搜索后生成答案" if search_performed else "生成初始答案",
+            reasoning=structured.reasoning_trace,
+            confidence=structured.confidence,
+            needs_store=structured.needs_store,
+            search_performed=search_performed,
+        )],
+    ).model_dump()
 
 
 @tool

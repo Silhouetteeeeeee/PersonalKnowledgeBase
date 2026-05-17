@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from agent.utils.agent_utils import build_context_block
 from agent.utils.llm import LLM
+from agent.models.nodes import RegenerateResult
+from agent.models.value_objects import LogicChainStep
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +22,11 @@ def regenerate(state: dict) -> dict:
     if not search_text:
         logger.info("No search results, keeping original answer")
         answer = state.get("answer", "")
-        return {
-            "answer": answer,
-            "logic_chain": [{
-                "node": "regenerate",
-                "action": "无搜索结果，保留原答案",
-                "reasoning": "Web search returned no results, keeping original answer unchanged",
-            }],
-        }
+        return RegenerateResult(answer=answer, logic_chain=[LogicChainStep(
+            node="regenerate",
+            action="无搜索结果，保留原答案",
+            reasoning="Web search returned no results, keeping original answer unchanged",
+        )]).model_dump()
 
     logger.info("Regenerating answer with %d search results", len(state.get("search_results", [])))
 
@@ -43,11 +42,8 @@ def regenerate(state: dict) -> dict:
     result = LLM.generate_structured(prompt, RegenerateOutput, use_language=False)
 
     logger.info("Regenerated answer: %s", result.answer[:80])
-    return {
-        "answer": result.answer,
-        "logic_chain": [{
-            "node": "regenerate",
-            "action": "基于搜索结果重新生成答案",
-            "reasoning": result.reasoning_trace,
-        }],
-    }
+    return RegenerateResult(answer=result.answer, logic_chain=[LogicChainStep(
+        node="regenerate",
+        action="基于搜索结果重新生成答案",
+        reasoning=result.reasoning_trace,
+    )]).model_dump()
