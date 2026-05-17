@@ -43,7 +43,8 @@ def test_fact_check_no_answer():
     from agent.nodes.fact_check import fact_check
 
     result = fact_check({"answer": ""})
-    assert result == {"contradiction_found": False, "contradiction_details": ""}
+    assert result["contradiction_found"] is False
+    assert result["contradiction_details"] == ""
 
 
 def test_fact_check_skips_when_no_related_knowledge():

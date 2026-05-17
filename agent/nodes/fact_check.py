@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from agent.utils.llm import LLM
 from storage.models import find_similar_pages
 from storage.wiki_storage import read_page
+from agent.models.nodes import FactCheckResult
+from agent.models.value_objects import LogicChainStep
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,10 @@ def fact_check(state: dict) -> dict:
     active_related, knowledge_text = _search_related(state)
     if not active_related:
         logger.info("Fact check: no active related knowledge found, skipping")
-        return {"contradiction_found": False, "contradiction_details": ""}
+        return FactCheckResult(
+            contradiction_found=False,
+            contradiction_details="",
+        ).model_dump()
 
     answer = state["answer"]
 
@@ -75,17 +80,16 @@ def fact_check(state: dict) -> dict:
             result.severity, result.explanation[:100],
         )
 
-    return {
-        "contradiction_found": result.has_contradiction,
-        "contradiction_details": result.explanation if result.has_contradiction else "",
-        "contradiction_severity": result.severity,
-        "contradiction_knowledge_ids": [k["id"] for k in active_related] if result.has_contradiction else [],
-        "contradiction_knowledge_texts": [f"[{k['title']}]({k['file_path']})" for k in active_related] if result.has_contradiction else [],
-        "logic_chain": [{
-            "node": "fact_check",
-            "action": "矛盾检测" if result.has_contradiction else "矛盾检测通过",
-            "reasoning": result.reasoning_trace,
-            "severity": result.severity,
-            "contradiction": result.explanation if result.has_contradiction else "",
-        }],
-    }
+    return FactCheckResult(
+        contradiction_found=result.has_contradiction,
+        contradiction_details=result.explanation if result.has_contradiction else "",
+        contradiction_severity=result.severity,
+        contradiction_knowledge_ids=[k["id"] for k in active_related] if result.has_contradiction else [],
+        contradiction_knowledge_texts=[f"[{k['title']}]({k['file_path']})" for k in active_related] if result.has_contradiction else [],
+        logic_chain=[LogicChainStep(
+            node="fact_check",
+            action="矛盾检测" if result.has_contradiction else "矛盾检测通过",
+            reasoning=result.reasoning_trace,
+            severity=result.severity,
+        )],
+    ).model_dump()

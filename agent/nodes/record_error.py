@@ -1,6 +1,8 @@
 import logging
 
 from storage.models import save_error_record_with_embedding
+from agent.models.nodes import RecordErrorResult
+from agent.models.value_objects import LogicChainStep
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +30,13 @@ def record_error(state: dict) -> dict:
     except Exception as e:
         logger.error("Failed to save error record: %s", e)
 
-    return {
-        "correction_attempts": correction_attempts + 1,
-        "error_recorded": True,
-        "logic_chain": [{
-            "node": "record_error",
-            "action": "记录回答错误",
-            "reasoning": f"记录本次回答错误，问题: {user_message[:50]}"
-                         + (f"，修正建议: {correct_answer[:50]}" if correct_answer else ""),
-        }],
-    }
+    return RecordErrorResult(
+        correction_attempts=correction_attempts + 1,
+        error_recorded=True,
+        logic_chain=[LogicChainStep(
+            node="record_error",
+            action="记录回答错误",
+            reasoning=f"记录本次回答错误，问题: {user_message[:50]}"
+                     + (f"，修正建议: {correct_answer[:50]}" if correct_answer else ""),
+        )],
+    ).model_dump()

@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from agent.utils.llm import LLM
 from storage.models import search_error_records_semantic
+from agent.models.nodes import ReflectResult
+from agent.models.value_objects import LogicChainStep
 
 logger = logging.getLogger(__name__)
 
@@ -78,16 +80,14 @@ def reflect(state: dict) -> dict:
     if result.suggested_correction:
         logger.info("Suggested correction: %s", result.suggested_correction[:80])
 
-    return {
-        "reflection_result": result.source,
-        "reflection_reasoning": result.reasoning,
-        "reflection_correction": result.suggested_correction,
-        "force_web_search": result.needs_verification_search,
-        "logic_chain": [{
-            "node": "reflect",
-            "action": f"矛盾分析: {result.source}",
-            "reasoning": result.reasoning,
-            "source": result.source,
-            "suggested_correction": result.suggested_correction[:200] if result.suggested_correction else "",
-        }],
-    }
+    return ReflectResult(
+        reflection_result=result.source,
+        reflection_reasoning=result.reasoning,
+        reflection_correction=result.suggested_correction,
+        force_web_search=result.needs_verification_search,
+        logic_chain=[LogicChainStep(
+            node="reflect",
+            action=f"矛盾分析: {result.source}",
+            reasoning=result.reasoning,
+        )],
+    ).model_dump()
