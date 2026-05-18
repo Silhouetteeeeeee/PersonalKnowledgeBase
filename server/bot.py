@@ -230,7 +230,6 @@ class KnowledgeBot:
             id="daily_summary",
             replace_existing=True,
         )
-        self.scheduler.start()
         logger.info(
             "Daily summary scheduler started (09:00, user=%s)",
             DAILY_SUMMARY_USER_ID,
@@ -316,7 +315,17 @@ class KnowledgeBot:
             logger.warning("Async memory persistence failed: %s", e)
 
     def run(self):
-        self.client.run()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.client.connect())
+            loop.call_soon(self.scheduler.start)
+            loop.run_forever()
+        except KeyboardInterrupt:
+            self.client.disconnect()
+        finally:
+            self.scheduler.shutdown(wait=False)
+            loop.close()
 
 
 def run_bot():
