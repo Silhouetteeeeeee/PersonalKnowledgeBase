@@ -142,6 +142,7 @@ def init_db() -> None:
             report_date   TEXT,
             holdings_json TEXT,
             sectors_json  TEXT,
+            updated_at    TEXT,
             PRIMARY KEY (fund_code, report_date)
         );
         CREATE TABLE IF NOT EXISTS fund_decisions (

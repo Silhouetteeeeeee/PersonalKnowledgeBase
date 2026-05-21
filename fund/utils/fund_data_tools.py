@@ -151,8 +151,8 @@ def get_fund_holdings(code: str, year: Optional[int] = None) -> list[dict]:
             (code, f"{year}%"),
         ).fetchall()
         for r in rows:
-            if _cache_valid(None, CACHE_TTL["fund_holdings"]):
-                import json
+            r_dict = dict(r)
+            if _cache_valid(r_dict.get("updated_at"), CACHE_TTL["fund_holdings"]):
                 return json.loads(r["holdings_json"])
     finally:
         conn.close()
@@ -166,8 +166,8 @@ def get_fund_holdings(code: str, year: Optional[int] = None) -> list[dict]:
         try:
             conn.execute(
                 """INSERT OR REPLACE INTO fund_holdings_cache
-                   (fund_code, report_date, holdings_json, sectors_json)
-                   VALUES (?, ?, ?, ?)""",
+                   (fund_code, report_date, holdings_json, sectors_json, updated_at)
+                   VALUES (?, ?, ?, ?, datetime('now', 'localtime'))""",
                 (code, str(year), json.dumps(records, ensure_ascii=False), "{}"),
             )
             conn.commit()

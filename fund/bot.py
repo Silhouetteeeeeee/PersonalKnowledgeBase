@@ -72,7 +72,8 @@ class FundBot:
             secret=FUND_BOT_SECRET,
             max_reconnect_attempts=-1,
         ))
-        self.graph = build_fund_graph()
+        self.graph = build_fund_graph()  # uncompiled StateGraph
+        self.compiled_graph = self.graph.compile()  # pre-compiled for no-checkpointer path
         self.scheduler = AsyncIOScheduler()
         self.memory = FundMemory()
         self._setup_handlers()
@@ -242,15 +243,17 @@ class FundBot:
 
         # Invoke graph (with optional checkpointer)
         if FUND_CHECKPOINT_ENABLED:
+            from fund.checkpointer import thread_id
+            tid = thread_id(user_id, fund_code, today_str)
             with get_checkpointer(user_id) as saver:
                 result = await asyncio.to_thread(
                     self.graph.compile(checkpointer=saver).invoke,
                     state,
-                    {"configurable": {"thread_id": f"fund_{user_id}_{fund_code}_{today_str}"}},
+                    {"configurable": {"thread_id": tid}},
                 )
                 clear_checkpoint(user_id, fund_code, today_str)
         else:
-            result = await asyncio.to_thread(self.graph.compile().invoke, state)
+            result = await asyncio.to_thread(self.compiled_graph.invoke, state)
 
         response = result.get("final_decision", "分析完成，但无法生成建议。")
 

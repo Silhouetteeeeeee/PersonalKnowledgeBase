@@ -36,7 +36,11 @@
       "Bash(pytest tests/unit/test_url_processor.py -v --tb=short)",
       "Bash(pip list *)",
       "Bash(conda info *)",
-      "Bash(/c/Users/dudu/software/miniconda/envs/agent/bin/python -m pytest tests/unit/test_url_processor.py -v)"
+      "Bash(/c/Users/dudu/software/miniconda/envs/agent/bin/python -m pytest tests/unit/test_url_processor.py -v)",
+      "Bash(conda run *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(git diff *)",
+      "Bash(pip show *)"
     ]
   },
   "enabledPlugins": {
