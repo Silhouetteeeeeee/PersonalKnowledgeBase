@@ -36,3 +36,14 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 # Thinker module (spaced repetition)
 THINKER_USER_ID = os.getenv("THINKER_USER_ID", "")
 THINKER_CHECK_INTERVAL = int(os.getenv("THINKER_CHECK_INTERVAL", "4"))
+
+# Fund Bot (personal fund portfolio management)
+FUND_BOT_ENABLED = os.getenv("FUND_BOT_ENABLED", "false").lower() == "true"
+FUND_BOT_ID = os.getenv("FUND_BOT_ID", "")
+FUND_BOT_SECRET = os.getenv("FUND_BOT_SECRET", "")
+FUND_CHECKPOINT_ENABLED = os.getenv("FUND_CHECKPOINT_ENABLED", "false").lower() == "true"
+
+# Fund bot tasks
+TASK_MODEL_MAP["fund_analyst"] = LLM_MODEL
+TASK_MODEL_MAP["fund_researcher"] = LLM_MODEL
+TASK_MODEL_MAP["fund_manager"] = LLM_MODEL

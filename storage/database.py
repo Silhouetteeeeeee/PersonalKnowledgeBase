@@ -103,6 +103,62 @@ def init_db() -> None:
             FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
         );
         DROP TABLE IF EXISTS source_questions;
+        -- Fund bot tables
+        CREATE TABLE IF NOT EXISTS user_portfolio (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT NOT NULL,
+            fund_code   TEXT NOT NULL,
+            fund_name   TEXT,
+            shares      REAL,
+            cost_price  REAL,
+            notes       TEXT,
+            added_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            UNIQUE(user_id, fund_code)
+        );
+        CREATE TABLE IF NOT EXISTS fund_info (
+            code             TEXT PRIMARY KEY,
+            name             TEXT,
+            fund_type        TEXT,
+            company          TEXT,
+            established_date TEXT,
+            fund_size        REAL,
+            manager          TEXT,
+            nav              REAL,
+            total_nav        REAL,
+            nav_date         TEXT,
+            updated_at       TEXT
+        );
+        CREATE TABLE IF NOT EXISTS fund_nav_cache (
+            fund_code    TEXT,
+            date         TEXT,
+            nav          REAL,
+            total_nav    REAL,
+            daily_return REAL,
+            PRIMARY KEY (fund_code, date)
+        );
+        CREATE TABLE IF NOT EXISTS fund_holdings_cache (
+            fund_code     TEXT,
+            report_date   TEXT,
+            holdings_json TEXT,
+            sectors_json  TEXT,
+            PRIMARY KEY (fund_code, report_date)
+        );
+        CREATE TABLE IF NOT EXISTS fund_decisions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         TEXT,
+            fund_code       TEXT,
+            decision_date   TEXT,
+            rating          TEXT,
+            decision_text   TEXT,
+            nav_at_decision REAL,
+            raw_return      REAL,
+            alpha_return    REAL,
+            reflection      TEXT,
+            status          TEXT DEFAULT 'pending',
+            created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            resolved_at     TEXT
+        );
     """)
     conn.commit()
     conn.close()
