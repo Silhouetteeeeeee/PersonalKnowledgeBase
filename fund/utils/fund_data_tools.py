@@ -121,8 +121,8 @@ def get_fund_nav(code: str, days: int = 120) -> list[dict]:
                 daily_return = float(row.iloc[3]) if len(row) > 3 and row.iloc[3] else 0.0
                 conn.execute(
                     """INSERT OR REPLACE INTO fund_nav_cache
-                       (fund_code, date, nav, total_nav, daily_return)
-                       VALUES (?, ?, ?, ?, ?)""",
+                       (fund_code, date, nav, total_nav, daily_return, updated_at)
+                       VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))""",
                     (code, date, nav, total_nav, daily_return),
                 )
                 records.append({

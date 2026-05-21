@@ -135,6 +135,7 @@ def init_db() -> None:
             nav          REAL,
             total_nav    REAL,
             daily_return REAL,
+            updated_at   TEXT,
             PRIMARY KEY (fund_code, date)
         );
         CREATE TABLE IF NOT EXISTS fund_holdings_cache (
