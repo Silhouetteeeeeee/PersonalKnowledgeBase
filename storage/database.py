@@ -104,62 +104,67 @@ def init_db() -> None:
         );
         DROP TABLE IF EXISTS source_questions;
         -- Fund bot tables
+        -- 用户基金持仓表
         CREATE TABLE IF NOT EXISTS user_portfolio (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     TEXT NOT NULL,
-            fund_code   TEXT NOT NULL,
-            fund_name   TEXT,
-            shares      REAL,
-            cost_price  REAL,
-            notes       TEXT,
-            added_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-            updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            user_id     TEXT NOT NULL,       -- 微信用户ID
+            fund_code   TEXT NOT NULL,       -- 基金代码(6位数字)
+            fund_name   TEXT,                -- 基金名称
+            shares      REAL,                -- 持有份额
+            cost_price  REAL,                -- 成本单价(单位净值)
+            notes       TEXT,                -- 备注(如"定投账户"/"养老账户")
+            added_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),  -- 添加时间
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),  -- 更新时间
             UNIQUE(user_id, fund_code)
         );
+        -- 基金基本信息缓存(24h TTL)
         CREATE TABLE IF NOT EXISTS fund_info (
-            code             TEXT PRIMARY KEY,
-            name             TEXT,
-            fund_type        TEXT,
-            company          TEXT,
-            established_date TEXT,
-            fund_size        REAL,
-            manager          TEXT,
-            nav              REAL,
-            total_nav        REAL,
-            nav_date         TEXT,
-            updated_at       TEXT
+            code             TEXT PRIMARY KEY,   -- 基金代码
+            name             TEXT,               -- 基金简称
+            fund_type        TEXT,               -- 基金类型(股票型/混合型/债券型等)
+            company          TEXT,               -- 基金管理人
+            established_date TEXT,               -- 成立日期
+            fund_size        REAL,               -- 份额规模(亿份)
+            manager          TEXT,               -- 基金经理
+            nav              REAL,               -- 最新单位净值
+            total_nav        REAL,               -- 最新累计净值
+            nav_date         TEXT,               -- 净值日期
+            updated_at       TEXT                -- 缓存更新时间
         );
+        -- 基金单位净值历史缓存(1h TTL)
         CREATE TABLE IF NOT EXISTS fund_nav_cache (
-            fund_code    TEXT,
-            date         TEXT,
-            nav          REAL,
-            total_nav    REAL,
-            daily_return REAL,
-            updated_at   TEXT,
+            fund_code    TEXT,       -- 基金代码
+            date         TEXT,       -- 净值日期
+            nav          REAL,       -- 单位净值
+            total_nav    REAL,       -- 累计净值
+            daily_return REAL,       -- 日涨跌幅(%)
+            updated_at   TEXT,       -- 缓存更新时间
             PRIMARY KEY (fund_code, date)
         );
+        -- 基金持仓快照缓存(7d TTL, 按季披露)
         CREATE TABLE IF NOT EXISTS fund_holdings_cache (
-            fund_code     TEXT,
-            report_date   TEXT,
-            holdings_json TEXT,
-            sectors_json  TEXT,
-            updated_at    TEXT,
+            fund_code     TEXT,       -- 基金代码
+            report_date   TEXT,       -- 报告期(如"2024")
+            holdings_json TEXT,       -- 前十大持仓JSON
+            sectors_json  TEXT,       -- 行业分布JSON
+            updated_at    TEXT,       -- 缓存更新时间
             PRIMARY KEY (fund_code, report_date)
         );
+        -- 基金决策日志(TradingAgents风格延迟反思)
         CREATE TABLE IF NOT EXISTS fund_decisions (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id         TEXT,
-            fund_code       TEXT,
-            decision_date   TEXT,
-            rating          TEXT,
-            decision_text   TEXT,
-            nav_at_decision REAL,
-            raw_return      REAL,
-            alpha_return    REAL,
-            reflection      TEXT,
-            status          TEXT DEFAULT 'pending',
-            created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-            resolved_at     TEXT
+            user_id         TEXT,           -- 微信用户ID
+            fund_code       TEXT,           -- 基金代码
+            decision_date   TEXT,           -- 决策日期
+            rating          TEXT,           -- 评级(Strong Buy/Buy/Hold/Reduce/Sell)
+            decision_text   TEXT,           -- 完整决策分析文本
+            nav_at_decision REAL,           -- 决策时的单位净值
+            raw_return      REAL,           -- 实际收益率(延迟填充, Phase B)
+            alpha_return    REAL,           -- 超额收益率(延迟填充, Phase B)
+            reflection      TEXT,           -- 决策反思(延迟填充, Phase B)
+            status          TEXT DEFAULT 'pending',  -- pending(待反思) / resolved(已反思)
+            created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),  -- 创建时间
+            resolved_at     TEXT            -- 反思时间
         );
     """)
     conn.commit()

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import akshare as ak
+import pandas as pd
 
 from storage.database import get_connection
 
@@ -39,6 +40,16 @@ def search_fund(keyword: str) -> list[dict]:
         logger.error("search_fund(%s) failed: %s", keyword, e)
         return []
 
+def _parse_fund_info(df: pd.DataFrame) -> dict:
+    """处理基金数据DataFrame"""
+    # 如果DataFrame有两列：字段名和值
+    if len(df.columns) == 2:
+        return dict(zip(df.iloc[:, 0], df.iloc[:, 1]))
+
+    # 如果是三列格式（索引、字段、值）
+    elif len(df.columns) == 3:
+        return dict(zip(df.iloc[:, 1], df.iloc[:, 2]))
+
 
 def get_fund_info(code: str) -> Optional[dict]:
     """Get fund basic info with 24h cache."""
@@ -53,19 +64,20 @@ def get_fund_info(code: str) -> Optional[dict]:
         conn.close()
 
     try:
-        df = ak.fund_open_fund_info_em(symbol=code, indicator="基金概况")
+        df = ak.fund_info_ths(symbol=code)
         if df.empty:
             return None
-        row = df.iloc[0]
+        row = _parse_fund_info(df)
         info = {
             "code": code,
             "name": row.get("基金简称", ""),
             "fund_type": row.get("基金类型", ""),
-            "company": row.get("管理人", ""),
-            "established_date": row.get("成立日", ""),
-            "fund_size": row.get("最新规模", 0),
+            "company": row.get("基金管理人", ""),
+            "established_date": row.get("成立日期", ""),
+            "fund_size": row.get("份额规模", ""),
             "manager": row.get("基金经理", ""),
         }
+        info['fund_size'] = info['fund_size'][:info['fund_size'].index('亿份')]
         conn = get_connection()
         try:
             conn.execute(
@@ -162,13 +174,17 @@ def get_fund_holdings(code: str, year: Optional[int] = None) -> list[dict]:
         if df.empty:
             return []
         records = df.to_dict("records")
+        df = ak.fund_portfolio_industry_allocation_em(symbol=code, date=str(year))
+        if df.empty:
+            return []
+        sectors = df.to_dict("records")
         conn = get_connection()
         try:
             conn.execute(
                 """INSERT OR REPLACE INTO fund_holdings_cache
                    (fund_code, report_date, holdings_json, sectors_json, updated_at)
                    VALUES (?, ?, ?, ?, datetime('now', 'localtime'))""",
-                (code, str(year), json.dumps(records, ensure_ascii=False), "{}"),
+                (code, str(year), json.dumps(records, ensure_ascii=False), json.dumps(sectors,  ensure_ascii=False)),
             )
             conn.commit()
         finally:
@@ -194,10 +210,10 @@ def get_fund_rankings(code: str) -> list[dict]:
 def get_manager_info(code: str) -> list[dict]:
     """Get fund manager change history."""
     try:
-        df = ak.fund_manager_em(symbol=code)
+        df = ak.fund_manager_em()
         if df.empty:
             return []
-        return df.to_dict("records")
+        return df[df['现任基金代码'] == code].to_dict("records")
     except Exception as e:
         logger.error("get_manager_info(%s) failed: %s", code, e)
         return []
