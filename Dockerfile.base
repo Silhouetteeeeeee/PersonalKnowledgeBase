@@ -1,0 +1,31 @@
+# ── Base image: heavy dependencies only (build once) ──
+#
+# This image contains all Python dependencies. It only needs
+# to be rebuilt when requirements.txt changes.
+#
+# Build:
+#   docker build -f Dockerfile.base -t kb-base .
+#
+# (This takes 5-10 minutes, but you only do it once
+#  or when you add a new dependency)
+
+FROM python:3.10-slim
+
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+# PaddleOCR is HEAVY (~2GB). Not installed by default.
+ARG WITH_OCR=false
+ARG PIP_INDEX_URL
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    grep -v "^paddle" requirements.txt > /tmp/req-base.txt && \
+    pip install --no-cache-dir -r /tmp/req-base.txt ${PIP_INDEX_URL:+--index-url $PIP_INDEX_URL}
+
+RUN if [ "$WITH_OCR" = "true" ]; then \
+        pip install --no-cache-dir "paddlepaddle>=2.6.0,<3.0.0" "paddleocr>=2.8.0,<3.0.0" ${PIP_INDEX_URL:+--index-url $PIP_INDEX_URL}; \
+    fi

@@ -4,9 +4,7 @@ services:
   agent:
     build:
       context: .
-      # PaddleOCR is ~2GB; disable for smaller image
-      args:
-        WITH_OCR: "false"
+      dockerfile: Dockerfile
     container_name: knowledge-agent
     restart: unless-stopped
     env_file: .env
