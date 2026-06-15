@@ -4,7 +4,7 @@ import re
 from langgraph.prebuilt import ToolRuntime
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
-from langchain.agents import create_agent as create_react_agent
+from langgraph.prebuilt import create_react_agent
 
 from agent.state import AgentState
 from agent.utils.llm import LLM
