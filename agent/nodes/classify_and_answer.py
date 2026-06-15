@@ -127,7 +127,7 @@ def classify_and_answer(state: dict) -> dict:
     agent = create_react_agent(
         model=LLM.get_model(),
         tools=[web_search_tool],
-        system_prompt=_build_system_prompt(state),
+        prompt=_build_system_prompt(state),
         response_format=ClassifyOutput,
     )
     # Prevent infinite tool-calling loops
