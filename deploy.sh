@@ -14,8 +14,9 @@ docker build -t knowledge-agent .
 echo "==> Step 2: Exporting image ..."
 docker save knowledge-agent | gzip > /tmp/kb-agent.tar.gz
 
-echo "==> Step 3: Uploading to $SERVER ..."
-scp /tmp/kb-agent.tar.gz "$SERVER:/opt/kb/"
+echo "==> Step 3: Uploading image and runtime files to $SERVER ..."
+ssh "$SERVER" "mkdir -p /opt/kb/data /opt/kb/cache"
+scp /tmp/kb-agent.tar.gz docker-compose.yml .env "$SERVER:/opt/kb/"
 
 echo "==> Step 4: Loading and restarting on server ..."
 ssh "$SERVER" "cd /opt/kb && docker load < kb-agent.tar.gz && docker compose up -d"
