@@ -1,6 +1,8 @@
 import logging
+import struct
 
 from storage.database import get_connection
+from storage.models import generate_embedding
 from memory.message_history import MessageHistory
 from agent.utils.llm import LLM
 
@@ -10,14 +12,9 @@ EPISODIC_SEARCH_LIMIT = 3
 
 
 def _embed_text(text: str) -> bytes | None:
-    """Generate embedding for text using sqlite-vec compatible format."""
+    """Generate embedding via fastembed (shared with wiki vector search)."""
     try:
-        from sentence_transformers import SentenceTransformer
-
-        model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
-        emb = model.encode(text).tolist()
-        import struct
-
+        emb = generate_embedding(text)
         return struct.pack(f"{len(emb)}f", *emb)
     except Exception as e:
         logger.warning("Embedding failed: %s", e)

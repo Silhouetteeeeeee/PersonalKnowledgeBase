@@ -21,6 +21,10 @@ for _lib in ("httpx", "sentence_transformers", "fastembed", "httpcore", "akshare
 
 if __name__ == "__main__":
     init_db()
+
+    # Preload embedding model so first request is fast
+    from storage.models import generate_embedding
+    _ = generate_embedding("warmup")
     print("Knowledge Agent started (WebSocket long-connection mode)...")
 
     loop = asyncio.new_event_loop()
