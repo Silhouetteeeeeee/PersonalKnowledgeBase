@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 from datetime import date
 
 from aibot import WSClient, WSClientOptions
@@ -17,40 +16,11 @@ from fund.utils.portfolio_tools import add_holding, get_portfolio, get_holding, 
 from fund.utils.fund_data_tools import search_fund, get_fund_info, get_fund_nav
 from fund.utils.memory import FundMemory
 from fund.checkpointer import get_checkpointer, clear_checkpoint
+from fund.intent.classifier import classify, MIN_SCORE
+from fund.intent.schemas import INTENTS
 from storage.database import get_connection
 
 logger = logging.getLogger(__name__)
-
-
-def parse_intent(content: str) -> dict:
-    """Parse user message into intent and extracted params."""
-    content = content.strip()
-
-    m = re.match(r"(?:添加基金|加仓|添加)\s*(\w+)\s*([\d.]+)\s*份?\s*([\d.]*)", content)
-    if m:
-        return {"intent": "add_holding", "fund_code": m.group(1),
-                "shares": float(m.group(2)), "cost": float(m.group(3)) if m.group(3) else 0.0}
-
-    m = re.match(r"(?:删除基金|移除|删除)\s*(\w+)", content)
-    if m:
-        return {"intent": "remove_holding", "fund_code": m.group(1)}
-
-    if content in ("我的持仓", "持仓", "组合", "我的组合"):
-        return {"intent": "portfolio_overview"}
-
-    m = re.match(r"(?:分析|看看|评估)\s*(.+)", content)
-    if m:
-        return {"intent": "fund_analyze", "query": m.group(1).strip()}
-
-    m = re.match(r"(?:查一下|查询|查看)\s*(\w+)", content)
-    if m:
-        return {"intent": "fund_status", "fund_code": m.group(1)}
-
-    m = re.match(r"^(\d{6})$", content)
-    if m:
-        return {"intent": "fund_status", "fund_code": m.group(1)}
-
-    return {"intent": "fund_search", "query": content}
 
 
 def _lookup_fund_code(query: str) -> tuple:
@@ -98,22 +68,30 @@ class FundBot:
                 return
 
             logger.info("FundBot received from %s: %s", user_id, content[:60])
-            parsed = parse_intent(content)
-            intent = parsed["intent"]
+
+            # LLM intent classification
+            result = classify(content, INTENTS)
 
             try:
-                if intent == "add_holding":
-                    await self._handle_add_holding(frame, user_id, parsed)
-                elif intent == "remove_holding":
-                    await self._handle_remove_holding(frame, user_id, parsed)
-                elif intent == "portfolio_overview":
-                    await self._handle_portfolio_overview(frame, user_id)
-                elif intent == "fund_status":
-                    await self._handle_fund_status(frame, user_id, parsed)
-                elif intent == "fund_analyze":
-                    await self._handle_fund_analyze(frame, user_id, parsed)
+                if result is None or result.score < MIN_SCORE:
+                    await self._handle_search(frame, user_id, {"query": content})
+                    return
+
+                handler_map = {
+                    "fund_analyze": self._handle_fund_analyze,
+                    "fund_status": self._handle_fund_status,
+                    "fund_search": self._handle_search,
+                    "portfolio_overview": self._handle_portfolio_overview,
+                    "add_holding": self._handle_add_holding,
+                    "remove_holding": self._handle_remove_holding,
+                    "greeting": self._handle_greeting,
+                    "help": self._handle_help,
+                }
+                handler = handler_map.get(result.id)
+                if handler:
+                    await handler(frame, user_id, result.params)
                 else:
-                    await self._handle_search(frame, user_id, parsed)
+                    await self._handle_search(frame, user_id, {"query": content})
             except Exception:
                 logger.exception("FundBot error handling message from %s", user_id)
                 await self.client.reply(frame, {
@@ -125,18 +103,20 @@ class FundBot:
         def _on_error(error):
             logger.error("FundBot client error: %s", error)
 
-    async def _handle_add_holding(self, frame, user_id, parsed):
-        fund_code = parsed["fund_code"]
+    async def _handle_add_holding(self, frame, user_id, params):
+        fund_code = params["fund_code"]
         info = get_fund_info(fund_code)
         fund_name = info["name"] if info else fund_code
-        result = add_holding(user_id, fund_code, fund_name, parsed["shares"], parsed["cost"])
+        shares = params.get("shares", 0.0)
+        cost = params.get("cost", 0.0)
+        result = add_holding(user_id, fund_code, fund_name, shares, cost)
         await self.client.reply(frame, {
             "msgtype": "markdown",
             "markdown": {"content": result["message"]},
         })
 
-    async def _handle_remove_holding(self, frame, user_id, parsed):
-        result = remove_holding(user_id, parsed["fund_code"])
+    async def _handle_remove_holding(self, frame, user_id, params):
+        result = remove_holding(user_id, params["fund_code"])
         await self.client.reply(frame, {
             "msgtype": "markdown",
             "markdown": {"content": result["message"]},
@@ -164,15 +144,16 @@ class FundBot:
             "markdown": {"content": "\n".join(lines)},
         })
 
-    async def _handle_fund_status(self, frame, user_id, parsed):
-        fund_code = parsed.get("fund_code", "")
-        if not fund_code:
+    async def _handle_fund_status(self, frame, user_id, params):
+        query = params.get("query", "")
+        if not query:
             await self.client.reply(frame, {
                 "msgtype": "markdown",
                 "markdown": {"content": "请提供基金代码，如 `110011`"},
             })
             return
 
+        fund_code, fund_name = _lookup_fund_code(query)
         info = get_fund_info(fund_code)
         navs = get_fund_nav(fund_code, days=30)
 
@@ -196,8 +177,8 @@ class FundBot:
             "markdown": {"content": "\n".join(lines)},
         })
 
-    async def _handle_fund_analyze(self, frame, user_id, parsed):
-        query = parsed.get("query", "")
+    async def _handle_fund_analyze(self, frame, user_id, params):
+        query = params.get("query", "")
         if not query:
             await self.client.reply(frame, {
                 "msgtype": "markdown",
@@ -277,8 +258,8 @@ class FundBot:
             "markdown": {"content": response},
         })
 
-    async def _handle_search(self, frame, user_id, parsed):
-        query = parsed.get("query", "")
+    async def _handle_search(self, frame, user_id, params):
+        query = params.get("query", "")
         results = search_fund(query)
         if not results:
             await self.client.reply(frame, {
@@ -293,6 +274,31 @@ class FundBot:
         await self.client.reply(frame, {
             "msgtype": "markdown",
             "markdown": {"content": "\n".join(lines)},
+        })
+
+    async def _handle_greeting(self, frame, user_id, params):
+        await self.client.reply(frame, {
+            "msgtype": "markdown",
+            "markdown": {"content": "你好！我是基金助手，可以帮你管理基金组合。\n\n发送 `帮助` 查看支持的功能。"},
+        })
+
+    async def _handle_help(self, frame, user_id, params):
+        help_text = (
+            "## FundBot 使用指南\n\n"
+            "**基金分析**\n"
+            "- `分析 基金代码或名称` — 深度分析\n"
+            "- `查询 基金代码或名称` — 快速查看净值\n"
+            "- `搜索 关键词` — 搜索基金\n\n"
+            "**持仓管理**\n"
+            "- `我的持仓` — 查看持仓列表\n"
+            "- `添加基金 代码 份额 成本价` — 添加持仓\n"
+            "- `删除 基金代码` — 移除持仓\n\n"
+            "**其他**\n"
+            "- `帮助` / `你能做什么` — 查看此帮助"
+        )
+        await self.client.reply(frame, {
+            "msgtype": "markdown",
+            "markdown": {"content": help_text},
         })
 
     def _setup_schedulers(self):
