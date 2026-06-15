@@ -25,11 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Python dependencies ──
 COPY requirements.txt .
 
-# PaddleOCR is HEAVY (~2GB). Install with WITH_OCR=true to include it.
-ARG WITH_OCR=true
+# PaddleOCR is HEAVY (~2GB). Set WITH_OCR=true to include it.
+ARG WITH_OCR=false
+
+# Optional: use Tsinghua mirror for faster pip in China
+#   docker build --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple ...
+ARG PIP_INDEX_URL
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt ${PIP_INDEX_URL:+--index-url $PIP_INDEX_URL}
 
 # Remove PaddleOCR if user opted out
 RUN if [ "$WITH_OCR" = "false" ]; then \

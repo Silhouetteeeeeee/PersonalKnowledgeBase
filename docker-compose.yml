@@ -4,9 +4,9 @@ services:
   agent:
     build:
       context: .
-      # Set to false for a lighter image without PaddleOCR
+      # PaddleOCR is ~2GB; disable for smaller image
       args:
-        WITH_OCR: "true"
+        WITH_OCR: "false"
     container_name: knowledge-agent
     restart: unless-stopped
     env_file: .env
