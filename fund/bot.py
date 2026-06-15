@@ -16,7 +16,7 @@ from fund.utils.portfolio_tools import add_holding, get_portfolio, get_holding, 
 from fund.utils.fund_data_tools import search_fund, get_fund_info, get_fund_nav
 from fund.utils.memory import FundMemory
 from fund.checkpointer import get_checkpointer, clear_checkpoint
-from fund.intent.classifier import classify, MIN_SCORE
+from fund.intent.classifier import classify, validate_params, MIN_SCORE
 from fund.intent.schemas import INTENTS
 from storage.database import get_connection
 
@@ -89,6 +89,16 @@ class FundBot:
                 }
                 handler = handler_map.get(result.id)
                 if handler:
+                    # Validate required params before dispatch
+                    intent_node = next((i for i in INTENTS if i.id == result.id), None)
+                    if intent_node:
+                        ok, msg = validate_params(intent_node, result.params)
+                        if not ok:
+                            await self.client.reply(frame, {
+                                "msgtype": "markdown",
+                                "markdown": {"content": f"⚠️ {msg}"},
+                            })
+                            return
                     await handler(frame, user_id, result.params)
                 else:
                     await self._handle_search(frame, user_id, {"query": content})

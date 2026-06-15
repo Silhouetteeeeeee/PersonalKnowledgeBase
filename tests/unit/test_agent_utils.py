@@ -1,18 +1,20 @@
 """Tests for agent utility functions."""
 
+import pytest
 from agent.utils.agent_utils import build_context_block
 from agent.models.value_objects import UrlContent
 
+
+@pytest.mark.skip(reason="Integration test requiring live akshare API access")
 def test_fund_utils():
     import fund.utils.fund_data_tools as utils
 
-    # print(utils.search_fund("008163"))
-    print(utils.get_fund_info("008163"))
-    print(utils.get_fund_nav("008163"))
-    print(utils.get_fund_holdings("008163"))
-    print(utils.get_fund_rankings("008163"))
-    print(utils.get_manager_info("008163"))
-    print(utils.get_index_data())
+    utils.get_fund_info("008163")
+    utils.get_fund_nav("008163")
+    utils.get_fund_holdings("008163")
+    utils.get_fund_rankings("008163")
+    utils.get_manager_info("008163")
+    utils.get_index_data()
 
 
 
