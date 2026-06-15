@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 # Suppress verbose third-party library logs (embedding model HTTP checks, etc.)
-for _lib in ("httpx", "sentence_transformers", "fastembed", "httpcore", "akshare"):
+for _lib in ("httpx", "fastembed", "httpcore", "akshare"):
     logging.getLogger(_lib).setLevel(logging.WARNING)
 
 if __name__ == "__main__":
