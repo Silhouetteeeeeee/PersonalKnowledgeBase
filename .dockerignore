@@ -1,0 +1,46 @@
+# Git / CI
+.git
+.gitignore
+.gitkeep
+.github
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE & local config
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+
+# Node / frontend (if any)
+node_modules/
+
+# Project-specific: Docker ignores local data
+# (Docker volumes override this for runtime, but
+#  don't bake dev data into the image)
+data/
+cache/
+
+# Documentation & plans
+docs/superpowers/plans/
+docs/superpowers/specs/
+AGENTS.md
+
+# Test artifacts
+.pytest_cache/
+.mypy_cache/
+
+# OS artifacts
+Thumbs.db
+.DS_Store
