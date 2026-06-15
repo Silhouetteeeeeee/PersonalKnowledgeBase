@@ -40,7 +40,8 @@
       "Bash(conda run *)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(git diff *)",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "Bash(PYTHONPATH=. python fund/demo_analyze.py)"
     ]
   },
   "enabledPlugins": {
