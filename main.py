@@ -29,14 +29,14 @@ if __name__ == "__main__":
     # Start KnowledgeBot
     kb = KnowledgeBot()
     loop.run_until_complete(kb.client.connect())
-    kb.scheduler.start()
+    loop.call_soon(kb.scheduler.start)
 
     # Start FundBot if enabled
     if FUND_BOT_ENABLED:
         from fund.bot import FundBot
         fb = FundBot()
         loop.run_until_complete(fb.client.connect())
-        fb.scheduler.start()
+        loop.call_soon(fb.scheduler.start)
         print("FundBot started.")
 
     try:

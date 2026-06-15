@@ -43,9 +43,3 @@ FUND_BOT_ID = os.getenv("FUND_BOT_ID", "")
 FUND_BOT_SECRET = os.getenv("FUND_BOT_SECRET", "")
 FUND_CHECKPOINT_ENABLED = os.getenv("FUND_CHECKPOINT_ENABLED", "false").lower() == "true"
 
-# Fund Bot (personal fund portfolio management)
-FUND_BOT_ENABLED = os.getenv("FUND_BOT_ENABLED", "false").lower() == "true"
-FUND_BOT_ID = os.getenv("FUND_BOT_ID", "")
-FUND_BOT_SECRET = os.getenv("FUND_BOT_SECRET", "")
-FUND_CHECKPOINT_ENABLED = os.getenv("FUND_CHECKPOINT_ENABLED", "false").lower() == "true"
-

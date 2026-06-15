@@ -83,7 +83,8 @@ class LLM:
         """Generate text. Language instruction auto-appended unless use_language=False."""
         if use_language:
             prompt += get_language_instruction()
-        return with_retry(lambda: cls.get_model().invoke(prompt))
+        result = with_retry(lambda: cls.get_model().invoke(prompt))
+        return result.content if hasattr(result, "content") else str(result)
 
     @classmethod
     def generate_structured(
