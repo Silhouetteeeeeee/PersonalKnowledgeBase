@@ -30,7 +30,13 @@ class ProfileOutput(BaseModel):
 
 
 def update_profile(state: dict) -> dict:
-    """Extract personal information from the conversation and update user profile."""
+    """
+    用户画像更新节点：从对话中提取个人信息并持久化到 data/profiles/。
+
+    运行时机：与 fact_check 并行执行（classify_and_answer 之后 fan-out）。
+    提取的信息类型包括：姓名、职业、生活习惯、技术偏好、学习计划等。
+    画像 JSON 保存在 data/profiles/{user_id}.json，有备份轮转机制。
+    """
     user_message = state.get("user_message", "")
     answer = state.get("answer", "")
     user_id = state.get("user_id", "")
@@ -52,7 +58,7 @@ def update_profile(state: dict) -> dict:
     try:
         result = LLM.generate_structured(prompt, ProfileOutput, use_language=False)
     except Exception as e:
-        logger.warning("Profile extraction failed: %s", e)
+        logger.warning("画像提取失败: %s", e)
         return UpdateProfileResult(
             user_profile=state.get("user_profile", load_profile()),
         ).model_dump()
@@ -60,12 +66,12 @@ def update_profile(state: dict) -> dict:
     updated_fields = [p.field for p in result.profiles if p.should_update]
     for p in result.profiles:
         if p.should_update:
-            logger.info("Profile field: %s, value: %s", p.field, p.value)
+            logger.info("画像字段: %s = %s", p.field, p.value)
             profile = update_profile_field(profile, p.field, p.value)
     save_profile(profile, user_id)
 
     if updated_fields:
-        logger.info("Updated profile fields: %s", updated_fields)
+        logger.info("已更新画像字段: %s", updated_fields)
         return UpdateProfileResult(
             user_profile=profile,
             logic_chain=[LogicChainStep(

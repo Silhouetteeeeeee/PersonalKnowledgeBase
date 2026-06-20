@@ -35,7 +35,7 @@ def _get_embedder():
 
 
 def generate_embedding(text: str) -> list[float]:
-    """Generate a 512-dim embedding vector for the given text."""
+    """生成 512 维文本嵌入向量，用于向量相似度搜索。"""
     model = _get_embedder()
     vec = next(model.embed(text))
     return vec.tolist()

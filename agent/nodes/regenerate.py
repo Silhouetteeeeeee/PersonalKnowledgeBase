@@ -1,3 +1,11 @@
+"""
+重新生成答案节点：结合网络搜索结果修正原始答案。
+
+用在 contradiction 循环中：
+  record_error → search_web → regenerate → fact_check（再次验证）
+当搜索结果为空时，保留原答案不变。
+"""
+
 import logging
 
 from pydantic import BaseModel, Field
@@ -18,9 +26,17 @@ class RegenerateOutput(BaseModel):
 
 
 def regenerate(state: dict) -> dict:
+    """
+    重新生成答案：基于网络搜索到的实时信息修正原始回答。
+
+    流程：
+    1. 检查是否有搜索结果
+    2. 如果有，将搜索结果 + 上下文 + 原答案 一起送入 LLM 重新生成
+    3. 如果没有，保留原始答案不变
+    """
     search_text = "\n\n".join(state.get("search_results", []))
     if not search_text:
-        logger.info("No search results, keeping original answer")
+        logger.info("无搜索结果，保留原答案")
         answer = state.get("answer", "")
         return RegenerateResult(answer=answer, logic_chain=[LogicChainStep(
             node="regenerate",
@@ -28,7 +44,7 @@ def regenerate(state: dict) -> dict:
             reasoning="Web search returned no results, keeping original answer unchanged",
         )]).model_dump()
 
-    logger.info("Regenerating answer with %d search results", len(state.get("search_results", [])))
+    logger.info("基于 %d 条搜索结果重新生成答案", len(state.get("search_results", [])))
 
     context = build_context_block(state)
 
@@ -41,7 +57,7 @@ def regenerate(state: dict) -> dict:
     )
     result = LLM.generate_structured(prompt, RegenerateOutput, use_language=False)
 
-    logger.info("Regenerated answer: %s", result.answer[:80])
+    logger.info("重新生成答案: %s", result.answer[:80])
     return RegenerateResult(answer=result.answer, logic_chain=[LogicChainStep(
         node="regenerate",
         action="基于搜索结果重新生成答案",

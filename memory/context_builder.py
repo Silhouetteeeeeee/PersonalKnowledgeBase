@@ -9,17 +9,23 @@ logger = logging.getLogger(__name__)
 
 
 class ContextBuilder:
-    """Assemble 3-tier memory context for prompt injection."""
+    """三层记忆上下文构造器：为用户请求组装 prompt 注入的记忆信息。
+
+    三层记忆结构：
+    1. Core Memory（长期核心记忆）→ 用户画像 JSON
+    2. Working Memory（短期工作记忆）→ 当前会话最近消息列表
+    3. Episodic Memory（情景记忆）→ 跨会话的向量检索摘要
+    """
 
     def __init__(self):
         self.message_history = MessageHistory()
         self.episodic = EpisodicMemory()
 
     def build(self, user_id: str, session_id: int, content: str) -> dict:
-        """Build three context sections from memory tiers."""
+        """构建三层记忆上下文，供 prompt 注入使用。"""
         result = {}
 
-        # Layer 1: Core memory (user profile)
+        # ── Layer 1: 核心记忆（用户画像）──
         profile = load_profile(user_id)
         has_data = any(
             v for v in profile.values()
@@ -32,7 +38,7 @@ class ContextBuilder:
         else:
             result["profile_section"] = ""
 
-        # Layer 2: Working memory (recent conversation)
+        # ── Layer 2: 工作记忆（当前会话近期消息）──
         recent = self.message_history.get_recent(session_id)
         if recent:
             lines = []
@@ -45,7 +51,7 @@ class ContextBuilder:
         else:
             result["history_section"] = ""
 
-        # Layer 3: Episodic memory (cross-session vector search)
+        # ── Layer 3: 情景记忆（跨会话向量检索）──
         episodic_results = self.episodic.search(user_id, content)
         if episodic_results:
             entries = []
@@ -60,7 +66,7 @@ class ContextBuilder:
             result["episodic_section"] = ""
 
         logger.debug(
-            "Context built for user=%s session=%s: profile=%s history=%d episodic=%d",
+            "三层记忆构造完成: user=%s session=%s: profile=%s history=%d episodic=%d",
             user_id, session_id,
             "yes" if result["profile_section"] else "no",
             len(recent),

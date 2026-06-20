@@ -8,13 +8,19 @@ logger = logging.getLogger(__name__)
 
 
 def record_error(state: dict) -> dict:
+    """
+    错误记录节点：将检测到的回答错误存入数据库（含向量索引），
+    供后续回答参考，避免重复犯同类错误。
+
+    correction_attempts 递增，驱动 Graph 的 contradiction 循环继续。
+    """
     correction_attempts = state.get("correction_attempts", 0)
     user_message = state.get("user_message", "")
     wrong_answer = state.get("answer", "")
     correct_answer = state.get("reflection_correction", "")
     contradiction_details = state.get("contradiction_details", "")
 
-    logger.info("Recording error for: '%s'", user_message[:50])
+    logger.info("记录错误: user_message='%s'", user_message[:50])
 
     record = {
         "user_message": user_message,
@@ -26,9 +32,9 @@ def record_error(state: dict) -> dict:
 
     try:
         eid = save_error_record_with_embedding(record)
-        logger.info("Saved error record (id=%d)", eid)
+        logger.info("错误记录已保存（id=%d）", eid)
     except Exception as e:
-        logger.error("Failed to save error record: %s", e)
+        logger.error("错误记录保存失败: %s", e)
 
     return RecordErrorResult(
         correction_attempts=correction_attempts + 1,

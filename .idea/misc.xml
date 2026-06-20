@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="C:\Users\dudu\software\miniconda\envs\agent" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="C:\Users\dudu\software\miniconda\envs\agent" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_20" project-jdk-name="Python 3.10 (agent)" project-jdk-type="Python SDK" />
 </project>

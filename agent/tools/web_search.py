@@ -1,8 +1,20 @@
+"""
+网络搜索工具集：提供多种搜索引擎后端的统一接口。
+
+搜索策略：
+  1. 百度智能搜索（首选，中文支持好，需 BAIDU_API_KEY）
+  2. DuckDuckGo 搜索（备选，无需 API Key）
+"""
+
 import requests
 from ddgs import DDGS
 
 
 def search_web(query: str, max_results: int = 5) -> list[str]:
+    """
+    通用网络搜索：使用 DuckDuckGo（无需 API Key，适合英文搜索）。
+    作为百度搜索的备选方案。
+    """
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
@@ -10,10 +22,13 @@ def search_web(query: str, max_results: int = 5) -> list[str]:
     except Exception as e:
         return [f"[Search error: {e}]"]
 
+
 def search_web_from_baidu(query: str) -> list[str]:
-    """调用百度的智能搜索API 每日限用100次 更好地支持中文问题，并且回答更加精确
-        搜索生成api文档：https://cloud.baidu.com/doc/qianfan-api/s/wmjqtqr7w
-        搜索API文档：https://cloud.baidu.com/doc/qianfan-api/s/Wmbq4z7e5
+    """
+    百度智能搜索 API（首选，中文搜索效果好）。
+
+    限制：每日 100 次免费调用
+    文档：https://cloud.baidu.com/doc/qianfan-api/s/wmjqtqr7w
     """
     try:
         from server.config import BAIDU_API_KEY as api_key
@@ -33,11 +48,11 @@ def search_web_from_baidu(query: str) -> list[str]:
             ],
             "resource_type_filter": [
                 {
-                    "type": "web", # video image aladdin
+                    "type": "web",
                     "top_k": 5
                 }
             ],
-            "block_websites": ["https://blog.csdn.net"] # 排除csdn
+            "block_websites": ["https://blog.csdn.net"]  # 屏蔽 CSDN（内容质量参差不齐）
         }
         response = requests.post(url, json=data, headers=headers)
         response.raise_for_status()

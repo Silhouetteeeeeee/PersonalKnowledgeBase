@@ -33,7 +33,7 @@ def _search_related(state: dict) -> tuple[list, str]:
         return [], ""
 
     try:
-        related = find_similar_pages(answer, threshold=0.6, limit=5)
+        related = find_similar_pages(answer, threshold=0.8, limit=5)
     except Exception as e:
         logger.warning("Semantic search for fact check failed: %s", e)
         return [], ""

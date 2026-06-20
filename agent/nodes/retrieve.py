@@ -81,8 +81,9 @@ def _retrieve_wiki_pages(pages: list[WikiPage], query: str) -> dict:
                     distance=0,
                 ))
 
-    logger.info("Retrieved %d wiki pages (including %d relation-expanded)",
-                len(results), len(results) - len(pages))
+    logger.info("Retrieved %d wiki pages%s",
+                len(results),
+                f" (including {len(results) - len(pages)} relation-expanded)" if results else "")
     return RetrieveResult(stored_knowledge=results, logic_chain=[LogicChainStep(
         node="retrieve",
         action=f"检索到 {len(results)} 个 wiki 页面",

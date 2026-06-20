@@ -45,14 +45,13 @@ class LLM:
         return cls._default_model
 
     @classmethod
-    def get_openai_model(cls, base_url: str, model: str, temperature: Optional[float] = 0) -> ChatOpenAI:
+    def get_openai_model(cls, base_url: str, model: str, temperature: Optional[float] = 0, api_key: str = LLM_APIKEY) -> ChatOpenAI:
         return ChatOpenAI(
             model=model,
             base_url=base_url,
             api_key=LLM_APIKEY,
             temperature=temperature
         )
-
 
     @classmethod
     def get_specified_model(cls, model: str | None, temperature: Optional[float] = None) -> ChatDeepSeek:
@@ -107,6 +106,7 @@ class LLM:
             output_model: Type[BaseModel],
             model: str,
             use_language: bool = True,
+            api_key: str = LLM_APIKEY
     ):
         """Generate structured output. Language instruction auto-appended unless use_language=False."""
         if use_language:
@@ -128,3 +128,5 @@ class LLM:
             ("human", human_template),
         ])
         return prompt | cls.get_model() | StrOutputParser()
+
+

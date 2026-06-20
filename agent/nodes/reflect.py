@@ -27,6 +27,14 @@ class ReflectionOutput(BaseModel):
 
 
 def reflect(state: dict) -> dict:
+    """
+    矛盾反思节点：当 fact_check 检测到矛盾时，判断是已有知识错误还是 AI 回答错误。
+
+    三种结论：
+    - stored_knowledge_wrong: 知识库中的信息已过时 → 记录错误后搜索纠正
+    - answer_wrong: 本次生成的回答是幻觉/错误 → 记录错误后搜索纠正
+    - unresolved: 无法判断（可能两者在不同上下文中都正确） → 直接返回
+    """
     contradiction_details = state.get("contradiction_details", "")
     answer = state.get("answer", "")
     knowledge_ids = state.get("contradiction_knowledge_ids", [])
@@ -36,16 +44,16 @@ def reflect(state: dict) -> dict:
     correction_attempts = state.get("correction_attempts", 0)
     user_message = state.get("user_message", "")
 
-    logger.info("Reflecting on contradiction (severity=%s, attempts=%d)", severity, correction_attempts)
+    logger.info("矛盾反思: severity=%s, attempts=%d", severity, correction_attempts)
 
-    # Search for similar historical error records
+    # 搜索历史类似错误记录，帮助 LLM 理解上下文
     error_lessons = []
     try:
         error_lessons = search_error_records_semantic(user_message, limit=3)
     except Exception as e:
-        logger.warning("Error record search failed: %s", e)
+        logger.warning("历史错误记录搜索失败: %s", e)
 
-    # Build prompt
+    # 构造 LLM 提示词：分析矛盾的根源
     prompt_parts = [
         f"你正在分析一个知识矛盾。需要判断是已有知识错误、还是新生成的回答错误。\n\n",
         f"当前回答：\n{answer}\n\n",
@@ -53,7 +61,7 @@ def reflect(state: dict) -> dict:
         f"已有的知识文本：\n" + "\n".join(f"- {t}" for t in knowledge_texts) if knowledge_texts else "无",
         f"\n\n矛盾严重程度：{severity}",
         f"\n原始回答置信度：{confidence}",
-        f"\n当前修正尝试：{correction_attempts + 1} / 2",
+        f"\n当前修正尝试：{correction_attempts + 1} / 2（最多 2 次）",
     ]
 
     if error_lessons:
@@ -75,10 +83,10 @@ def reflect(state: dict) -> dict:
 
     result = LLM.generate_structured(prompt, ReflectionOutput, use_language=False)
 
-    logger.info("Reflection result: source=%s, needs_search=%s",
+    logger.info("反思结论: source=%s, needs_search=%s",
                 result.source, result.needs_verification_search)
     if result.suggested_correction:
-        logger.info("Suggested correction: %s", result.suggested_correction[:80])
+        logger.info("建议修正: %s", result.suggested_correction[:80])
 
     return ReflectResult(
         reflection_result=result.source,

@@ -71,7 +71,16 @@ def rewrite_query(state: dict) -> dict:
             action="跳过改写",
             reasoning="无 session_id",
         )]).model_dump()
-    session_id = int(session_id_raw)
+    # 兼容字符串和数字两种格式的 session_id
+    try:
+        session_id = int(session_id_raw)
+    except (ValueError, TypeError):
+        logger.debug("Skipping rewrite: non-integer session_id '%s'", session_id_raw)
+        return RewriteResult(search_query=user_message, logic_chain=[LogicChainStep(
+            node="rewrite_query",
+            action="跳过改写",
+            reasoning=f"非数字 session_id（{session_id_raw}），无需改写",
+        )]).model_dump()
 
     history = MessageHistory.get_recent(session_id)
     if len(history) < 2:
