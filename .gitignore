@@ -3,3 +3,6 @@ data/
 __pycache__/
 *.pyc
 .worktrees/
+
+# 自动生成的 Wiki 索引文件（每次知识存储后重建）
+data/wiki/index.md
