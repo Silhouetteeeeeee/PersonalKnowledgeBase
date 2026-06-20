@@ -43,7 +43,9 @@ FUND_BOT_ID = os.getenv("FUND_BOT_ID", "")
 FUND_BOT_SECRET = os.getenv("FUND_BOT_SECRET", "")
 FUND_CHECKPOINT_ENABLED = os.getenv("FUND_CHECKPOINT_ENABLED", "false").lower() == "true"
 
+# Image Reader (vision model via OpenAI-compatible API)
 IMG_READER_BASE_URL = os.getenv("IMG_READER_BASE_URL", "")
 IMG_READER_MODEL = os.getenv("IMG_READER_MODEL", "")
 IMG_READER_API_KEY = os.getenv("IMG_READER_API_KEY", "")
+IMG_READER_MAX_IMAGES = int(os.getenv("IMG_READER_MAX_IMAGES", "10"))
 
