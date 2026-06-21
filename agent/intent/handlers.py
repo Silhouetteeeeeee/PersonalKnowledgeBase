@@ -12,6 +12,8 @@ from agent.utils.agent_utils import build_url_context
 from agent.nodes.update_profile import update_profile
 from agent.nodes.search_web import search_web_node
 from agent.nodes.regenerate import regenerate
+from storage.models import get_all_pages_index, find_similar_pages, get_page_by_title
+from storage.wiki_storage import read_page
 from agent.models.nodes import (
     ChitChatResult,
     LinkHandlingResult,
@@ -150,18 +152,241 @@ def handle_error_feedback(state: dict) -> dict:
 
 
 def handle_knowledge_mgmt(state: dict) -> dict:
-    """Knowledge management — stub for now, will be enhanced later."""
+    """Knowledge management: list, search, delete, or organize wiki pages."""
+    logger.info("Handling knowledge management request")
+
+    user_message = state.get("user_message", "")
+
+    # Step 1: classify the management action
+    action = _classify_mgmt_action(user_message)
+    if action is None:
+        return KnowledgeMgmtResult(
+            answer="我没太理解您想对知识库做什么操作。您可以：\n\n"
+                   "1. 查看知识列表 — 「我有哪些知识」\n"
+                   "2. 搜索知识 — 「关于XX的知识」\n"
+                   "3. 删除知识 — 「删除关于XX的知识」\n"
+                   "4. 知识统计 — 「我的知识库有多大」",
+            logic_chain=[LogicChainStep(
+                node="handle_knowledge_mgmt",
+                action="意图不明确",
+                reasoning="无法识别知识管理操作类型",
+            )],
+        ).model_dump()
+
+    # Step 2: execute the action
+    if action["action"] == "list":
+        result = _mgmt_list_pages()
+    elif action["action"] == "search":
+        result = _mgmt_search_pages(action.get("target", user_message))
+    elif action["action"] == "delete":
+        result = _mgmt_delete_page(action.get("target", ""))
+    elif action["action"] == "stats":
+        result = _mgmt_stats()
+    elif action["action"] == "organize":
+        result = _mgmt_organize(action.get("target", ""))
+    else:
+        result = "暂不支持该知识管理操作。"
+
     return KnowledgeMgmtResult(
-        answer=(
-            "📚 知识管理功能正在开发中。目前您可以通过日常问答来积累知识，"
-            "系统会自动从对话中提取并整理知识页面。"
-        ),
+        answer=result,
         logic_chain=[LogicChainStep(
             node="handle_knowledge_mgmt",
-            action="知识管理",
-            reasoning="Stub: 功能尚未实现",
+            action=f"知识管理: {action['action']}",
+            reasoning=action.get("reason", ""),
         )],
     ).model_dump()
+
+
+def _classify_mgmt_action(user_message: str) -> dict | None:
+    """LLM classifies the specific knowledge management action.
+
+    Returns dict with keys: action, target, reason.
+    """
+    from pydantic import BaseModel, Field
+
+    class MgmtAction(BaseModel):
+        action: str = Field(
+            description="操作类型: list=查看列表, search=搜索, delete=删除, "
+                        "stats=统计, organize=整理归类"
+        )
+        target: str = Field(description="搜索或删除的目标主题/标题")
+        reason: str = Field(description="分类理由")
+
+    prompt = (
+        f"用户消息: {user_message}\n\n"
+        "判断用户想对知识库做什么操作：\n"
+        "- list: 查看知识列表/目录/索引。示例：「我有哪些知识」「帮我看看知识库」\n"
+        "- search: 搜索/查询某个主题的知识。示例：「关于Redis的知识」「Python相关知识」\n"
+        "- delete: 删除某个知识页面。示例：「删除关于XX的页面」「把XX删掉」\n"
+        "- stats: 知识库统计。示例：「我有多少知识」「知识库有多大」\n"
+        "- organize: 整理/归类知识。示例：「帮我整理一下知识」「归类相关知识点」\n\n"
+        "无法判断时，action 设为空字符串。\n"
+        "target 填写用户提到的具体主题（如果有的话）。"
+    )
+    try:
+        result = LLM.generate_structured(prompt, MgmtAction, use_language=False)
+        if not result.action:
+            return None
+        return {"action": result.action, "target": result.target, "reason": result.reason}
+    except Exception:
+        return None
+
+
+def _mgmt_list_pages() -> str:
+    """List all active wiki pages in a formatted message."""
+    pages = get_all_pages_index()
+    if not pages:
+        return "📚 知识库目前还是空的，没有已保存的知识页面。\n\n您可以向我提问来积累知识，系统会自动从对话中提取知识点。"
+
+    total = len(pages)
+    lines = [f"📚 当前共有 **{total}** 篇知识页面：\n"]
+    for p in pages:
+        title = p.get("title", "未命名")
+        tags = p.get("tags", [])
+        if isinstance(tags, str):
+            try:
+                import json
+                tags = json.loads(tags)
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+        tag_str = f" [{', '.join(tags[:3])}]" if tags else ""
+        lines.append(f"- **{title}**{tag_str}")
+    return "\n".join(lines)
+
+
+def _mgmt_search_pages(query: str) -> str:
+    """Search for pages matching the query."""
+    if not query or len(query.strip()) < 2:
+        return "请告诉我您想搜索什么主题，比如「关于Redis的知识」。"
+    try:
+        results = find_similar_pages(query, threshold=0.4, limit=5)
+    except Exception as e:
+        logger.warning("Knowledge search failed: %s", e)
+        return "搜索知识库时出了点问题，请稍后再试。"
+
+    if not results:
+        return f"未找到与「{query}」相关的知识页面。\n\n您可以继续提问，系统会自动从对话中积累相关知识。"
+
+    from storage.wiki_storage import read_page
+    lines = [f"🔍 找到以下与「{query}」相关的知识页面：\n"]
+    for r in results:
+        page_data = read_page(r.file_path)
+        snippet = (page_data["body"][:150] + "...") if page_data and page_data.get("body") else "(内容读取失败)"
+        lines.append(f"### {r.title}")
+        lines.append(f"> 相关度: {(1 - r.distance) * 100:.0f}%")
+        lines.append(f"> {snippet}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _mgmt_delete_page(target: str) -> str:
+    """Soft-delete a wiki page by title."""
+    if not target or len(target.strip()) < 2:
+        return "请告诉我您想删除哪个知识页面，比如「删除关于Redis的页面」。\n\n⚠️ 删除操作不可撤销，请谨慎操作。"
+
+    from storage.database import get_connection
+
+    # Try exact match first, then fuzzy
+    page = get_page_by_title(target.strip())
+    if page is None:
+        # Fuzzy: find similar pages and show options
+        try:
+            similar = find_similar_pages(target, threshold=0.5, limit=3)
+        except Exception:
+            similar = []
+
+        if similar:
+            lines = [f"未找到完全匹配「{target}」的页面。您是不是想删除以下某个页面？\n"]
+            for s in similar:
+                lines.append(f"- {s.title}")
+            lines.append("\n请回复更精确的页面标题。")
+            return "\n".join(lines)
+        return f"未找到标题为「{target}」的知识页面。"
+
+    # Confirm and soft-delete
+    title = page["title"]
+    page_id = page["id"]
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE pages SET status='inactive' WHERE id=? AND status='active'",
+            (page_id,),
+        )
+        conn.commit()
+        logger.info("Soft-deleted page '%s' (id=%d)", title, page_id)
+    except Exception as e:
+        conn.rollback()
+        logger.error("Failed to delete page '%s': %s", title, e)
+        return f"删除「{title}」时出了点问题，请稍后再试。"
+    finally:
+        conn.close()
+
+    return f"🗑️ 已删除知识页面「{title}」。\n\n如果误删了，可以联系管理员恢复。"
+
+
+def _mgmt_stats() -> str:
+    """Return knowledge base statistics."""
+    from storage.database import get_connection
+
+    conn = get_connection()
+    try:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM pages WHERE status='active'"
+        ).fetchone()[0]
+        total_tags = conn.execute(
+            "SELECT COUNT(DISTINCT id) FROM page_relations"
+        ).fetchone()[0]
+        recent = conn.execute(
+            "SELECT COUNT(*) FROM pages WHERE status='active' "
+            "AND updated_at >= datetime('now', '-7 days')"
+        ).fetchone()[0]
+    except Exception:
+        total = total_tags = recent = 0
+    finally:
+        conn.close()
+
+    return (
+        f"📊 **知识库统计**\n\n"
+        f"- 知识页面: **{total}** 篇\n"
+        f"- 页面关联: **{total_tags}** 条\n"
+        f"- 本周更新: **{recent}** 篇\n\n"
+        f"继续保持学习节奏！"
+    )
+
+
+def _mgmt_organize(target: str) -> str:
+    """LLM-based organization suggestions."""
+    pages = get_all_pages_index()
+    if not pages or len(pages) < 2:
+        return "知识库中的页面还不多，暂时不需要整理。多提问积累更多知识后再来整理吧！"
+
+    # Build a compact index for LLM
+    index_lines = []
+    for p in pages:
+        tags = p.get("tags", [])
+        if isinstance(tags, str):
+            try:
+                import json
+                tags = json.loads(tags)
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+        tag_str = f" [{', '.join(tags)}]" if tags else ""
+        index_lines.append(f"- {p['title']}{tag_str}")
+
+    index_text = "\n".join(index_lines)
+    prompt = (
+        f"以下是知识库中的所有页面标题和标签：\n\n{index_text}\n\n"
+        f"用户要求整理归类知识。请分析这些页面之间的关系，"
+        f"给出1-3条归类建议（哪些页面应该归为一组，用什么主题标签）。"
+        f"保持简洁，用中文输出。"
+    )
+    try:
+        suggestion = LLM.generate(prompt, use_language=True)
+    except Exception as e:
+        logger.warning("Knowledge organization failed: %s", e)
+        return "整理分析时出了点问题，请稍后再试。"
+
+    return f"📂 **知识归类建议**\n\n{suggestion}\n\n---\n这些建议可以帮助您更好地组织知识库。"
 
 
 def handle_low_confidence(state: dict) -> dict:
