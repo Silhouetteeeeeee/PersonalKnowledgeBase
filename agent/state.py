@@ -26,6 +26,13 @@ class AgentState(TypedDict):
     episodic_memories: list[str]               # 跨会话情景记忆
     user_profile: dict                         # 用户画像 JSON
 
+    # ── 意图识别 ──
+    intent: str                                # 分类后的意图ID (knowledge_qa, chitchat, ...)
+    intent_confidence: float                   # 意图置信度 [0.0, 1.0]
+    intent_params: dict                        # 提取的结构化参数
+    intent_reasoning: str                      # 分类理由
+    low_confidence_suggestions: list[str]      # 置信度低时的追问建议
+
     # ── URL 内容 ──
     url_contents: list[UrlContent]             # 从消息中提取的 URL 抓取结果
 

@@ -61,3 +61,48 @@ class RewriteResult(NodeResult):
 
 class RespondResult(BaseModel):
     final_response: str = ""
+
+
+# ── Intent classification ──
+
+class IntentClassifyResult(NodeResult):
+    intent: str = "knowledge_qa"
+    intent_confidence: float = 0.0
+    intent_params: dict = {}
+    intent_reasoning: str = ""
+    low_confidence_suggestions: list[str] = []
+
+
+class HandlerResult(NodeResult):
+    """Base result for non-knowledge_qa intent handlers."""
+    answer: str = ""
+    needs_store: bool = False
+
+
+class ChitChatResult(HandlerResult):
+    pass
+
+
+class LinkHandlingResult(HandlerResult):
+    pass
+
+
+class PersonalInfoResult(HandlerResult):
+    user_profile: dict = {}
+
+
+class ErrorFeedbackResult(HandlerResult):
+    search_results: list[str] = []
+
+
+class KnowledgeMgmtResult(HandlerResult):
+    pass
+
+
+class LowConfidenceResult(HandlerResult):
+    """Fallback: clarifying questions when intent is uncertain."""
+    pass
+
+
+class StubResult(HandlerResult):
+    pass

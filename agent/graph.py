@@ -13,6 +13,8 @@ from agent.nodes.reflect import reflect
 from agent.nodes.record_error import record_error
 from agent.nodes.respond import respond
 from agent.nodes.update_profile import update_profile
+from agent.intent.classifier import classify_intent
+from agent.intent.handlers import dispatch_intent_handler
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,19 @@ def post_error_router(state: dict) -> str:
     return "search_web"
 
 
+def intent_router(state: dict) -> str:
+    """意图路由：根据 classified intent 分派到不同处理路径。
+
+    knowledge_qa → rewrite_query（标准检索问答路径）
+    其他所有意图 → intent_handler（统一调度节点）
+    """
+    intent = state.get("intent", "") or ""
+    if intent == "knowledge_qa" or not intent:
+        return "rewrite_query"
+    logger.info("路由: intent=%s → intent_handler", intent)
+    return "intent_handler"
+
+
 def build_graph() -> StateGraph:
     """
     构建 LangGraph StateGraph。
@@ -95,11 +110,15 @@ def build_graph() -> StateGraph:
     builder.add_node("record_error", record_error)
     builder.add_node("update_profile", update_profile)
 
+    # ── 意图识别节点 ──
+    builder.add_node("classify_intent", classify_intent)
+    builder.add_node("intent_handler", dispatch_intent_handler)
+
     # ── 入口 ──
     builder.set_entry_point("parse")
 
     # ── 正向链路 ──
-    builder.add_edge("parse", "rewrite_query")
+    builder.add_edge("parse", "classify_intent")
     builder.add_edge("rewrite_query", "retrieve")
     builder.add_edge("retrieve", "classify_and_answer")
 
@@ -110,6 +129,20 @@ def build_graph() -> StateGraph:
     # 搜索 → 重生成 → 再次事实核查
     builder.add_edge("search_web", "regenerate")
     builder.add_edge("regenerate", "fact_check")
+
+    # ── 意图路由 ──
+    # classify_intent → [rewrite_query (知识问答) | intent_handler (其他)]
+    builder.add_conditional_edges(
+        "classify_intent",
+        intent_router,
+        {
+            "rewrite_query": "rewrite_query",
+            "intent_handler": "intent_handler",
+        },
+    )
+
+    # handler → respond（所有非知识问答的终端 handler 都汇聚到 respond）
+    builder.add_edge("intent_handler", "respond")
 
     # ── 条件路由 ──
     # fact_check → [reflect | respond]
