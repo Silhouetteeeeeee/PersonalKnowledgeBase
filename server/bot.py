@@ -11,6 +11,7 @@ from aibot import WSClient, WSClientOptions
 from server.config import WECOM_BOT_ID, WECOM_BOT_SECRET, CLAUDE_CODE_BRIDGE_ENABLED
 from server.config import DAILY_SUMMARY_ENABLED, DAILY_SUMMARY_USER_ID
 from server.config import THINKER_USER_ID, THINKER_CHECK_INTERVAL
+from server.config import CURIOSITY_ENABLED, CURIOSITY_INTERVAL
 from agent.graph import build_graph
 from agent.nodes.store import run_background_store
 from storage.profile import load_profile
@@ -24,6 +25,7 @@ from server.thinker import check_due_reviews, handle_review_response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from server.daily_summary import send_daily_summary
 from storage.models import cleanup_old_versions, record_sent_review
+from server.curiosity import discover_and_learn as curiosity_discover
 
 logger = logging.getLogger(__name__)
 graph = build_graph()
@@ -48,6 +50,7 @@ class KnowledgeBot:
         self._start_daily_summary_scheduler()
         self._start_cleanup_scheduler()
         self._start_thinker_scheduler()
+        self._start_curiosity_scheduler()
 
     def _setup_handlers(self):
         @self.client.on("connected")
@@ -281,6 +284,39 @@ class KnowledgeBot:
             "Thinker scheduler started (check every %dh, weekly Mon 10:00, user=%s)",
             THINKER_CHECK_INTERVAL, THINKER_USER_ID,
         )
+
+    def _start_curiosity_scheduler(self):
+        """Schedule autonomous knowledge discovery."""
+        if not CURIOSITY_ENABLED:
+            logger.info("好奇心引擎已禁用")
+            return
+
+        self.scheduler.add_job(
+            self._run_curiosity,
+            "interval",
+            hours=CURIOSITY_INTERVAL,
+            id="curiosity_discover",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "好奇心引擎启动 (每 %d 小时探索一次)",
+            CURIOSITY_INTERVAL,
+        )
+
+    async def _run_curiosity(self):
+        """Async wrapper for autonomous discovery."""
+        try:
+            result = await asyncio.to_thread(curiosity_discover)
+            status = result.get("status", "unknown")
+            pages = result.get("pages_created", 0)
+            topic = result.get("topic", "")
+            if status == "success":
+                logger.info("好奇心探索成功: 主题='%s', 创建 %d 个页面", topic, pages)
+            else:
+                logger.info("好奇心探索跳过: %s", result.get("reason", status))
+        except Exception:
+            logger.exception("好奇心探索异常")
 
     async def _run_thinker_check(self):
         """Async wrapper for thinker review check."""

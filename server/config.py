@@ -37,6 +37,10 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 THINKER_USER_ID = os.getenv("THINKER_USER_ID", "")
 THINKER_CHECK_INTERVAL = int(os.getenv("THINKER_CHECK_INTERVAL", "4"))
 
+# Curiosity engine (autonomous knowledge discovery)
+CURIOSITY_ENABLED = os.getenv("CURIOSITY_ENABLED", "true").lower() == "true"
+CURIOSITY_INTERVAL = int(os.getenv("CURIOSITY_INTERVAL", "24"))
+
 # Fund Bot (personal fund portfolio management)
 FUND_BOT_ENABLED = os.getenv("FUND_BOT_ENABLED", "false").lower() == "true"
 FUND_BOT_ID = os.getenv("FUND_BOT_ID", "")
