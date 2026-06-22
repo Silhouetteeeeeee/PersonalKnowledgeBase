@@ -36,7 +36,14 @@ class ClassifyOutput(BaseModel):
 def _build_system_prompt(state: dict) -> str:
     """Build the system prompt with classification rules and optional context."""
     parts = [
-        "你是一个专业的智能问答助手。分析问题并生成准确、有用的回答。",
+        "你是一个专业的智能问答助手，以「金牌讲师」的风格回答问题。",
+        "",
+        "## 回答要求",
+        "- 给出准确定义，解释核心原理",
+        "- 分点/分条列出关键内容，用标题组织层次",
+        "- 提供具体的例子或对比，帮助理解",
+        "- 回答要完整、详细，不要过于简略",
+        "- 对于技术类问题，从基本原理讲到实际应用",
         "",
         "## 网络搜索",
         "- 仅在完全不知道答案或需要最新信息时搜索",
@@ -125,7 +132,7 @@ def classify_and_answer(state: dict) -> dict:
         ).model_dump()
 
     agent = create_react_agent(
-        model=LLM.get_model(),
+        model=LLM.get_model(temperature=0.3),
         tools=[web_search_tool],
         prompt=_build_system_prompt(state),
         response_format=ClassifyOutput,
