@@ -142,8 +142,9 @@ def classify_and_answer(state: dict) -> dict:
         prompt=_build_system_prompt(state),
         response_format=ClassifyOutput,
     )
-    # Prevent infinite tool-calling loops
-    agent.recursion_limit = MAX_AGENT_STEPS
+    # 避免无限循环
+    # 2倍留给agent思考的轮数
+    agent.recursion_limit = MAX_AGENT_STEPS * 2
 
     try:
         result = agent.invoke({
@@ -169,21 +170,21 @@ def classify_and_answer(state: dict) -> dict:
         structured.confidence, structured.needs_store,
     )
 
-    # 获取最终答案：优先用结构化输出的 answer，如果过短则用 Agent 消息体内容
+    # 获取最终答案：优先用结构化输出的 answer，如果过短则用 Agent 消息体内容 暂不采用 对结果不准确有影响
     answer_text = structured.answer
-    if len(answer_text.strip()) < 200:
-        messages = result.get("messages", [])
-        if messages:
-            last_ai = next(
-                (m.content for m in reversed(messages)
-                 if hasattr(m, "content") and isinstance(getattr(m, "content", ""), str)
-                 and len(m.content or "") > 200),
-                None
-            )
-            if last_ai:
-                logger.info("结构化 answer 过短（%d字），使用 Agent 消息体内容（%d字）",
-                            len(answer_text), len(last_ai))
-                answer_text = last_ai
+    # if len(answer_text.strip()) < 200:
+    #     messages = result.get("messages", [])
+    #     if messages:
+    #         last_ai = next(
+    #             (m.content for m in reversed(messages)
+    #              if hasattr(m, "content") and isinstance(getattr(m, "content", ""), str)
+    #              and len(m.content or "") > 200),
+    #             None
+    #         )
+    #         if last_ai:
+    #             logger.info("结构化 answer 过短（%d字），使用 Agent 消息体内容（%d字）",
+    #                         len(answer_text), len(last_ai))
+    #             answer_text = last_ai
 
     logger.info("Answer: %s", answer_text[:80])
 
