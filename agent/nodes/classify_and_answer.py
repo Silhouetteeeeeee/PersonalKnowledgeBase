@@ -23,7 +23,12 @@ class ClassifyOutput(BaseModel):
     reasoning_trace: str = Field(
         description="Step-by-step reasoning: why this confidence level, what knowledge was considered"
     )
-    answer: str = Field(description="Answer to the question")
+    answer: str = Field(
+        description="The COMPLETE answer to the question. "
+                    "This is the final response shown to the user. "
+                    "Include ALL details, code, explanations — do NOT summarize. "
+                    "For code questions, include the full working code."
+    )
     confidence: float = Field(
         description="Confidence from 0.0 to 1.0"
     )
@@ -163,10 +168,27 @@ def classify_and_answer(state: dict) -> dict:
         "Classified with confidence=%.2f needs_store=%s",
         structured.confidence, structured.needs_store,
     )
-    logger.info("Answer: %s", structured.answer[:80])
+
+    # 获取最终答案：优先用结构化输出的 answer，如果过短则用 Agent 消息体内容
+    answer_text = structured.answer
+    if len(answer_text.strip()) < 200:
+        messages = result.get("messages", [])
+        if messages:
+            last_ai = next(
+                (m.content for m in reversed(messages)
+                 if hasattr(m, "content") and isinstance(getattr(m, "content", ""), str)
+                 and len(m.content or "") > 200),
+                None
+            )
+            if last_ai:
+                logger.info("结构化 answer 过短（%d字），使用 Agent 消息体内容（%d字）",
+                            len(answer_text), len(last_ai))
+                answer_text = last_ai
+
+    logger.info("Answer: %s", answer_text[:80])
 
     return ClassifyResult(
-        answer=structured.answer,
+        answer=answer_text,
         confidence=structured.confidence,
         needs_store=structured.needs_store,
         logic_chain=[LogicChainStep(
