@@ -39,9 +39,40 @@ class ResearchTopic(BaseModel):
 
 # ── Step 1: Topic selection ──
 
+def _get_research_history(limit: int = 20) -> str:
+    """查询好奇心历史研究记录，返回格式化的文本。"""
+    from storage.database import get_connection
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT topic, status, pages_created, summary, created_at
+               FROM curiosity_topics
+               ORDER BY created_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        if not rows:
+            return ""
+        lines = ["## 以往研究记录"]
+        for r in rows:
+            status_icon = {"success": "✅", "skipped": "⏭️", "failed": "❌"}.get(r["status"], "❓")
+            topic = r["topic"]
+            date = (r["created_at"] or "")[:10]
+            pages = f", 创建 {r['pages_created']} 个页面" if r["pages_created"] else ""
+            summary = f" — {r['summary'][:80]}" if r.get("summary") else ""
+            lines.append(f"- {status_icon} {topic} ({date}){pages}{summary}")
+        return "\n".join(lines)
+    finally:
+        conn.close()
+
+
 def _select_topic() -> ResearchTopic | None:
-    """LLM 分析当前知识库，选择一个值得探索的研究方向。"""
+    """LLM 分析当前知识库 + 历史研究记录，选择值得探索的研究方向。
+
+    包含历史记录避免重复选题，如果选已研究过的主题，
+    LLM 必须在 reason 中说明这次的新角度。
+    """
     pages = get_all_pages_index()
+    history = _get_research_history()
 
     if pages:
         lines = []
@@ -59,9 +90,13 @@ def _select_topic() -> ResearchTopic | None:
     else:
         overview = "知识库目前为空。"
 
-    prompt = (
-        f"{overview}\n\n"
-        "你是一个知识探索助手。请基于当前知识库，推荐一个值得探索的研究主题。\n\n"
+    prompt_parts = [
+        f"{overview}\n\n",
+        "你是一个知识探索助手。请基于当前知识库和历史研究记录，推荐一个值得探索的研究主题。\n\n",
+    ]
+    if history:
+        prompt_parts.append(f"{history}\n\n")
+    prompt_parts.append(
         "## 选题原则\n"
         "1. 如果知识库不为空：选择现有知识的自然延伸或补充\n"
         "   - 填补知识缺口（比如有 Django 但没有 FastAPI）\n"
@@ -70,9 +105,12 @@ def _select_topic() -> ResearchTopic | None:
         "2. 如果知识库为空：选择一个通用且有价值的技术主题\n"
         "3. topic 要具体（不是『Python』，而是『FastAPI 异步特性』）\n"
         "4. search_query 要适合网络搜索，能返回高质量中文或英文内容\n"
-        "5. 避免选择知识库中已覆盖得很好的主题\n"
+        "5. 如果选择以往研究过的主题，必须在 reason 中说明本次的新角度\n"
+        "   （如上次学基础用法，这次学性能优化/最佳实践/进阶特性）\n"
         "6. 用中文输出"
     )
+
+    prompt = "".join(prompt_parts)
 
     try:
         result = LLM.generate_structured(prompt, ResearchTopic, use_language=False)
@@ -148,8 +186,46 @@ def _save_curiosity_log(result: dict):
     except Exception as e:
         logger.warning("保存好奇心日志失败: %s", e)
 
+    from messenger import Messenger
+    Messenger.send_markdown("\n".join(lines))
+
 
 # ── Main entry point ──
+
+def _save_research_record(topic: str, search_query: str, reason: str,
+                          status: str, pages_created: int = 0,
+                          summary: str = "") -> None:
+    """将好奇心研究结果写入 curiosity_topics 表。"""
+    from storage.database import get_connection
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO curiosity_topics
+               (topic, search_query, reason, status, pages_created, summary)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (topic, search_query, reason, status, pages_created, summary),
+        )
+        conn.commit()
+        logger.info("好奇心记录已保存: topic='%s' status=%s", topic, status)
+    except Exception as e:
+        logger.warning("保存好奇心记录失败: %s", e)
+    finally:
+        conn.close()
+
+
+def _build_summary(logic_chain: list[dict]) -> str:
+    """从 logic_chain 提取页面标题作为摘要。"""
+    titles = []
+    for step in logic_chain:
+        if step.get("node") == "store":
+            reasoning = step.get("reasoning", "")
+            # 提取 Pages: [...] 中的内容
+            import re
+            m = re.search(r"Pages: \[(.*?)\]", reasoning)
+            if m:
+                titles.append(m.group(1))
+    return "; ".join(titles) if titles else ""
+
 
 def discover_and_learn() -> dict:
     """一次完整的自主知识发现周期。由 APScheduler 定时调用。
@@ -170,7 +246,9 @@ def discover_and_learn() -> dict:
     if not content:
         logger.info("未获取到研究内容: %s", topic.topic)
         result = {"status": "skipped", "reason": "no research content",
-                  "topic": topic.topic}
+                  "topic": topic.topic, "search_query": topic.search_query}
+        _save_research_record(topic.topic, topic.search_query, topic.reason,
+                               "skipped", 0, "搜索无结果")
         _save_curiosity_log(result)
         return result
 
@@ -188,11 +266,14 @@ def discover_and_learn() -> dict:
         logger.exception("知识蒸馏失败: %s", e)
         result = {"status": "failed", "reason": f"distillation error: {e}",
                   "topic": topic.topic, "search_query": topic.search_query}
+        _save_research_record(topic.topic, topic.search_query, topic.reason,
+                               "failed", 0, str(e)[:100])
         _save_curiosity_log(result)
         return result
 
     page_count = len(wiki_result.get("page_ids", []))
     logic_chain = wiki_result.get("logic_chain", [])
+    summary = _build_summary(logic_chain) if page_count > 0 else "内容质量不足，未创建页面"
 
     if page_count > 0:
         logger.info("✅ 自主学习完成: 主题='%s', 创建 %d 个页面",
@@ -200,13 +281,17 @@ def discover_and_learn() -> dict:
     else:
         logger.info("内容质量不足，未创建新页面: %s", topic.topic)
 
+    status = "success" if page_count > 0 else "skipped"
     result = {
-        "status": "success" if page_count > 0 else "skipped",
+        "status": status,
         "topic": topic.topic,
         "search_query": topic.search_query,
         "reason": topic.reason,
         "pages_created": page_count,
         "logic_chain": logic_chain,
     }
+
+    _save_research_record(topic.topic, topic.search_query, topic.reason,
+                           status, page_count, summary)
     _save_curiosity_log(result)
     return result

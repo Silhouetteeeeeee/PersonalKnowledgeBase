@@ -166,6 +166,17 @@ def init_db() -> None:
             created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),  -- 创建时间
             resolved_at     TEXT            -- 反思时间
         );
+        -- 好奇心研究历史（选题跟踪，避免重复研究）
+        CREATE TABLE IF NOT EXISTS curiosity_topics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,
+            search_query TEXT NOT NULL DEFAULT '',
+            reason TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'success',
+            pages_created INTEGER DEFAULT 0,
+            summary TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        );
     """)
     conn.commit()
     conn.close()
