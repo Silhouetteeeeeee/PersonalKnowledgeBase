@@ -3,6 +3,8 @@ version: "3.9"
 services:
   agent:
     image: knowledge-agent:latest
+    environment:
+      - TZ=Asia/Shanghai
     build:
       context: .
       dockerfile: Dockerfile
