@@ -22,6 +22,7 @@ from memory.episodic import EpisodicMemory
 
 from server.claude_bridge import ClaudeCodeBridge
 from server.thinker import check_due_reviews, handle_review_response
+from server.messenger import Messenger
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from server.daily_summary import send_daily_summary
 from storage.models import cleanup_old_versions, record_sent_review
@@ -45,6 +46,7 @@ class KnowledgeBot:
             secret=WECOM_BOT_SECRET,
             max_reconnect_attempts=-1,
         ))
+        Messenger.init(self.client)
         self.scheduler = AsyncIOScheduler()
         self._setup_handlers()
         self._start_daily_summary_scheduler()
@@ -79,10 +81,7 @@ class KnowledgeBot:
                     response = claude_bridge.handle(cmd)
                 else:
                     response = "⚠️ 远程编码功能未启用\n请在 .env 中设置 CLAUDE_CODE_BRIDGE_ENABLED=true"
-                await self.client.reply(frame, {
-                    "msgtype": "markdown",
-                    "markdown": {"content": response},
-                })
+                await Messenger.reply_markdown(frame, response)
                 logger.info("Claude Code bridge response sent to user_id=%s", user_id)
                 return
 
@@ -92,10 +91,7 @@ class KnowledgeBot:
                 if '#review_' in quoted_text:
                     logger.info("Thinker: user %s replied to review: %s", user_id, content[:30])
                     response = handle_review_response(quoted_text, content)
-                    await self.client.reply(frame, {
-                        "msgtype": "markdown",
-                        "markdown": {"content": response},
-                    })
+                    await Messenger.reply_markdown(frame, response)
                     logger.info("Thinker response sent to user_id=%s", user_id)
                     return
 
@@ -145,12 +141,7 @@ class KnowledgeBot:
                 })
                 response = result.get("final_response", "")
 
-                await self.client.reply(frame, {
-                    "msgtype": "markdown",
-                    "markdown": {
-                        "content": response,
-                    },
-                })
+                await Messenger.reply_markdown(frame, response)
                 logger.info("Response sent to user_id=%s", user_id)
 
                 # ── 异步持久化（不阻塞回复）──
@@ -211,10 +202,7 @@ class KnowledgeBot:
                 _process_and_store_file, file_bytes, actual_filename, user_id
             )
 
-            await self.client.reply(frame, {
-                "msgtype": "markdown",
-                "markdown": {"content": reply_text},
-            })
+            await Messenger.reply_markdown(frame, reply_text)
             logger.info("File processing reply sent to user_id=%s", user_id)
         except Exception:
             logger.exception("Error processing file upload from %s", user_id)
@@ -233,7 +221,7 @@ class KnowledgeBot:
             "cron",
             hour=9,
             minute=0,
-            args=[self.client, DAILY_SUMMARY_USER_ID],
+            args=[DAILY_SUMMARY_USER_ID],
             misfire_grace_time=300,
             id="daily_summary",
             replace_existing=True,
@@ -323,10 +311,7 @@ class KnowledgeBot:
         try:
             pushed = await asyncio.to_thread(check_due_reviews, THINKER_USER_ID)
             for item in pushed:
-                await self.client.send_message(THINKER_USER_ID, {
-                    "msgtype": "markdown",
-                    "markdown": {"content": item["message"]},
-                })
+                await Messenger.send_markdown(THINKER_USER_ID, item["message"])
                 await asyncio.to_thread(
                     record_sent_review,
                     item["schedule_id"], item["page_id"], item["marker_id"],
@@ -341,7 +326,7 @@ class KnowledgeBot:
         try:
             message = await asyncio.to_thread(generate_weekly_integration, THINKER_USER_ID)
             if message:
-                await self.client.send_message(THINKER_USER_ID, message)
+                await Messenger.send_markdown(THINKER_USER_ID, message)
                 logger.info("Thinker: pushed weekly integration")
         except Exception:
             logger.exception("Weekly integration failed")

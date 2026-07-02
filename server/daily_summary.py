@@ -150,34 +150,29 @@ def _generate_summary_text(pages: list[dict]) -> str:
     return result.summary
 
 
-async def send_daily_summary(client, user_id: str) -> bool:
-    """Query yesterday's pages, generate summary, push to WeChat user.
+async def send_daily_summary(user_id: str) -> bool:
+    """Query yesterday's pages, generate summary, push to WeChat user via Messenger.
 
     Args:
-        client: WSClient instance for sending messages.
         user_id: WeChat user ID to push to.
 
     Returns:
         True if message was sent, False if skipped or failed.
     """
+    from server.messenger import Messenger
+
     pages = _get_yesterday_pages()
     if not pages:
-        logger.info("No new or updated pages yesterday, skipping daily summary")
+        logger.info("昨日无新增或更新页面，跳过日报")
         return False
 
-    logger.info("Generating daily summary for %d pages", len(pages))
+    logger.info("正在生成日报，共 %d 个页面", len(pages))
     summary = _generate_summary_text(pages)
     if not summary:
-        logger.error("Failed to generate summary text")
+        logger.error("日报生成失败")
         return False
 
-    try:
-        await client.send_message(user_id, {
-            "msgtype": "markdown",
-            "markdown": {"content": summary},
-        })
-        logger.info("Daily summary pushed to user %s (%d pages)", user_id, len(pages))
-        return True
-    except Exception as e:
-        logger.error("Failed to send daily summary to %s: %s", user_id, e)
-        return False
+    sent = await Messenger.send_markdown(user_id, summary)
+    if sent:
+        logger.info("日报已推送给 %s（%d 个页面）", user_id, len(pages))
+    return sent
