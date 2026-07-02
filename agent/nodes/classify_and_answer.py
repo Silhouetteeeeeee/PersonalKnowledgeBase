@@ -205,7 +205,8 @@ def classify_and_answer(state: dict) -> dict:
 
 @tool
 def web_search_tool(query: str, runtime: ToolRuntime[AgentState]) -> str:
-    """Search the web when you lack the information needed to answer. Do NOT search for common knowledge. If search fails, answer from existing knowledge — do NOT retry."""
+    """Search the web when you lack the information needed to answer. Do NOT search for common knowledge. If search
+    fails, answer from existing knowledge — do NOT retry."""
     state = runtime.state
     search_time = state.get("search_time", 0)
     if search_time > MAX_AGENT_STEPS:

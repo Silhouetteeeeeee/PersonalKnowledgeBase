@@ -47,6 +47,7 @@ def _select_topic() -> ResearchTopic | None:
         lines = []
         for p in pages:
             tags_raw = p.get("tags", "[]")
+            tags = []
             if isinstance(tags_raw, str):
                 try:
                     tags = json.loads(tags_raw)[:3]
